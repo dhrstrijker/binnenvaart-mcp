@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getVoyage, getWaterLevel, searchObjects } from "../sources/euris.js";
+import { getNotices, getVoyage, getWaterLevel, searchObjects } from "../sources/euris.js";
 
 /**
  * Register every tool on a server.
@@ -117,6 +117,39 @@ export function registerTools(server: McpServer): void {
     },
     async ({ van, naar, schip }) => {
       const result = await getVoyage(van, naar, schip);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        isError: result.data === undefined,
+      };
+    },
+  );
+
+  // M3 — current Notices to Skippers (NtS) from EuRIS: closures, cautions,
+  // works. Filtered server-side by fairway + country + validity. For notices
+  // that lie exactly on a planned trip, euris_route is more precise.
+  server.registerTool(
+    "euris_berichten",
+    {
+      title: "Berichten aan de scheepvaart (EuRIS NtS)",
+      description: [
+        "Haal actuele berichten aan de scheepvaart (Notices to Skippers: stremmingen, waarschuwingen, werkzaamheden, gewijzigde bedientijden) op uit EuRIS.",
+        "Geef bij voorkeur een vaarweg met de exacte naam (bijv. 'Waal', 'Boven-Merwede', 'Albertkanaal') en/of een landcode (NL, BE, DE, FR) om gericht te filteren.",
+        "Bij een onbekende vaarwegnaam krijg je voorgestelde namen terug om uit te kiezen. De lijst toont actieve en aankomende berichten; voor stremmingen die precies op een route liggen is euris_route nauwkeuriger.",
+        "Geef geen bindend vaaradvies; dit is brondata, de schipper en officiële bronnen beslissen.",
+      ].join(" "),
+      inputSchema: {
+        vaarweg: z
+          .string()
+          .optional()
+          .describe("Exacte vaarwegnaam om op te filteren, bijvoorbeeld 'Waal' of 'Albertkanaal'. Optioneel."),
+        land: z
+          .string()
+          .optional()
+          .describe("Landcode om op te filteren: NL, BE, DE of FR. Optioneel."),
+      },
+    },
+    async ({ vaarweg, land }) => {
+      const result = await getNotices({ vaarweg, land });
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         isError: result.data === undefined,

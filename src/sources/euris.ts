@@ -501,6 +501,192 @@ function clean(value: string | null | undefined): string | undefined {
   return t || undefined;
 }
 
+// === Notices to Skippers (NtS) =============================================
+// Current notices and closures from /api/v3/nts (OData v4). We filter
+// SERVER-SIDE on fairway, country and validity — dateEnd >= today, using a full
+// datetime literal (a bare date errors on this endpoint). Fairway names are
+// exact and obscure, so on a miss we consult /nts/filters/FAIRWAY and hand back
+// candidate names, mirroring the route disambiguation flow (ADR-0004/0005).
+
+export interface Notice {
+  titel: string;
+  vaarwegen: string[];
+  type: string;
+  beperkingen: string[]; // NtS limitation codes, e.g. NOSERV, CAUTIO, OBSTRU
+  van?: string;
+  tot?: string; // "9999-12-31" means open-ended
+  nummer?: string;
+  organisatie?: string;
+  land?: string;
+}
+
+const NTS_URL = `${BASE_URL}/api/v3/nts`;
+const NTS_MAX = 25;
+
+export async function getNotices(opts: { vaarweg?: string; land?: string }): Promise<SourceResult<Notice[]>> {
+  const vaarweg = opts.vaarweg?.trim() || undefined;
+  const land = opts.land?.trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2) || undefined;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const clauses = [`dateEnd ge ${today}T00:00:00Z`]; // active or upcoming only
+  if (land) clauses.push(`countryCode eq '${land}'`);
+  if (vaarweg) clauses.push(`fairways eq '${odataLiteral(vaarweg)}'`);
+
+  const url =
+    `${NTS_URL}?$filter=${encodeURIComponent(clauses.join(" and "))}` +
+    `&$orderby=${encodeURIComponent("dateIssue desc")}&$top=${NTS_MAX}`;
+
+  let page: unknown;
+  try {
+    page = await getJson<unknown>(url, { token: TOKEN });
+  } catch (error) {
+    return gap(
+      "euris-berichten-api-failed",
+      `EuRIS-berichten konden niet worden opgehaald: ${error instanceof Error ? error.message : String(error)}`,
+      "blocking",
+    );
+  }
+
+  const records = recordsFromPage(page);
+  const total = isRecord(page) ? num(page, "count") ?? records.length : records.length;
+  const notices = records.map(toNotice).filter((n): n is Notice => n !== undefined);
+
+  if (!notices.length) {
+    const datagat: Datagat = vaarweg
+      ? await fairwayMissDatagat(vaarweg)
+      : {
+          code: "euris-berichten-none",
+          message: `Geen actieve berichten gevonden${land ? ` voor ${land}` : ""}.`,
+          severity: "info",
+        };
+    return { bronregels: [], datagaten: [datagat] };
+  }
+
+  const datagaten: Datagat[] = [];
+  if (!vaarweg && !land) {
+    datagaten.push({
+      code: "euris-berichten-unfiltered",
+      message:
+        "Geen vaarweg of land opgegeven; toont de recentste actieve berichten corridorbreed. Geef een vaarweg (exacte naam, bijv. 'Waal') en/of land (NL/BE/DE/FR) om gericht te filteren.",
+      severity: "info",
+    });
+  }
+  if (total > notices.length) {
+    datagaten.push({
+      code: "euris-berichten-truncated",
+      message: `${total} berichten voldoen; de ${notices.length} recentst uitgegeven worden getoond. Verfijn met vaarweg of land.`,
+      severity: "info",
+    });
+  }
+
+  return {
+    data: notices,
+    bronregels: [
+      {
+        source: "EuRIS",
+        subject: `Berichten aan de scheepvaart${vaarweg ? ` — ${vaarweg}` : ""}${land ? ` (${land})` : ""}`,
+        value: `${notices.length} van ${total} actief bericht${total === 1 ? "" : "en"}`,
+        note: "EuRIS NtS (api/v3/nts)",
+      },
+    ],
+    datagaten,
+  };
+}
+
+function toNotice(record: Record<string, unknown>): Notice | undefined {
+  const titel = dutchTitle(record);
+  if (!titel) return undefined;
+  return {
+    titel,
+    vaarwegen: strArray(record, "fairways"),
+    type: str(record, "messageTypeMessage") || "bericht",
+    beperkingen: strArray(record, "limitations"),
+    van: dateOnly(str(record, "dateStart")) || undefined,
+    tot: dateOnly(str(record, "dateEnd")) || undefined,
+    nummer: str(record, "number") || undefined,
+    organisatie: str(record, "organisation", "originator") || undefined,
+    land: str(record, "countryCode") || undefined,
+  };
+}
+
+/** NtS titles ship as a JSON string of per-language variants; prefer Dutch. */
+function dutchTitle(record: Record<string, unknown>): string {
+  const raw = str(record, "multilanguageTitles");
+  if (raw) {
+    try {
+      const map = JSON.parse(raw) as Record<string, unknown>;
+      if (typeof map.nl === "string" && map.nl.trim()) return map.nl.trim();
+    } catch {
+      // fall through to the plain title
+    }
+  }
+  return str(record, "title");
+}
+
+function strArray(record: Record<string, unknown>, key: string): string[] {
+  const v = record[key];
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim());
+}
+
+function dateOnly(value: string): string {
+  return value ? value.slice(0, 10) : "";
+}
+
+// The 661-name fairway catalogue, fetched once per process and reused to turn a
+// fairway miss into useful candidate names instead of a dead end.
+let fairwayCatalogue: string[] | undefined;
+
+async function loadFairwayCatalogue(): Promise<string[]> {
+  if (fairwayCatalogue) return fairwayCatalogue;
+  try {
+    const list = await getJson<unknown>(`${NTS_URL}/filters/FAIRWAY`, { token: TOKEN });
+    fairwayCatalogue = Array.isArray(list)
+      ? list.map((x) => (isRecord(x) ? str(x, "value", "title") : typeof x === "string" ? x : "")).filter((s) => s)
+      : [];
+  } catch {
+    fairwayCatalogue = [];
+  }
+  return fairwayCatalogue;
+}
+
+async function fairwayMissDatagat(vaarweg: string): Promise<Datagat> {
+  const vlc = vaarweg.toLowerCase();
+  const cat = await loadFairwayCatalogue();
+  if (cat.some((v) => v.toLowerCase() === vlc)) {
+    return {
+      code: "euris-berichten-none-fairway",
+      message: `Geen actieve berichten voor vaarweg "${vaarweg}" op dit moment.`,
+      severity: "info",
+    };
+  }
+  // Match a catalogue name that contains the query, or (for an over-typed query)
+  // a catalogue name of real length contained in it — never a 1–3 char stub.
+  const matches = cat
+    .filter((v) => {
+      const lv = v.toLowerCase();
+      return lv.includes(vlc) || (lv.length >= 4 && vlc.includes(lv));
+    })
+    .slice(0, 8);
+  if (matches.length) {
+    return {
+      code: "euris-berichten-fairway-suggest",
+      message: `Onbekende of onvolledige vaarwegnaam "${vaarweg}". Bedoelde je een van deze vaarwegen? ${matches.join(", ")}. Herhaal met de exacte naam.`,
+      severity: "caution",
+    };
+  }
+  return {
+    code: "euris-berichten-fairway-unknown",
+    message: `Geen vaarweg gevonden die lijkt op "${vaarweg}". Gebruik een exacte vaarwegnaam, bijvoorbeeld 'Waal', 'Boven-Merwede' of 'Albertkanaal'.`,
+    severity: "caution",
+  };
+}
+
+/** Escape a value for an OData string literal (single quote → doubled). */
+function odataLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 // --- helpers ---------------------------------------------------------------
 
 function toWaterLevel(record: Record<string, unknown>): WaterLevel | undefined {
