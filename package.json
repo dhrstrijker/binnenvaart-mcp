@@ -4,6 +4,22 @@
   "description": "Open MCP server that brings official EuRIS inland-shipping data (water levels, routes, locks, bridges, notices) into any LLM chat tool.",
   "type": "module",
   "license": "MIT",
+  "author": "Dylan Strijker",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dhrstrijker/binnenvaart-mcp.git"
+  },
+  "homepage": "https://github.com/dhrstrijker/binnenvaart-mcp#readme",
+  "bugs": "https://github.com/dhrstrijker/binnenvaart-mcp/issues",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "euris",
+    "inland-shipping",
+    "binnenvaart",
+    "water-level",
+    "open-data"
+  ],
   "bin": {
     "binnenvaart-mcp": "dist/stdio.js"
   },
@@ -15,6 +31,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
