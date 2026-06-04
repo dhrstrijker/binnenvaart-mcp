@@ -30,7 +30,7 @@ The tools speak Dutch (the skipper's language); the model translates as needed.
 
 ## Use it
 
-> **Reality check.** Adding an MCP server is a developer step today — not a one-tap mobile install. For the **hosted** endpoint, most chat tools require a **paid plan**, you set it up in the **web/desktop app (not on mobile)**, and ChatGPT additionally needs **Developer Mode** enabled. If that's not your idea of a good time, this tool isn't aimed at you yet.
+> **Reality check.** Adding an MCP server is a developer step. For the **hosted** endpoint, most chat tools require a **paid plan**, you set it up in the **web/desktop app (not on mobile)**, and ChatGPT additionally needs **Developer Mode** enabled.
 
 ### Hosted — HTTP
 
