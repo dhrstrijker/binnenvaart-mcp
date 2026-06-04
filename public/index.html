@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>binnenvaart-mcp</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 42rem;
+        margin: 4rem auto;
+        padding: 0 1.5rem;
+        line-height: 1.6;
+        color: #1a1a1a;
+      }
+      code {
+        background: #f4f4f5;
+        padding: 0.15em 0.4em;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      h1 {
+        margin-bottom: 0.25rem;
+      }
+      .muted {
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>binnenvaart-mcp</h1>
+    <p class="muted">
+      An open MCP server that brings official EuRIS inland-shipping data into any LLM chat tool.
+    </p>
+    <p>Model Context Protocol endpoint (Streamable HTTP):</p>
+    <p><code>POST /api/mcp</code></p>
+    <p>
+      Add it to an MCP client (Cursor, Claude, …) as a remote server pointing at
+      <code>/api/mcp</code> on this domain. Open data — no key required.
+    </p>
+    <p class="muted">Data source: EuRIS (eurisportal.eu).</p>
+  </body>
+</html>

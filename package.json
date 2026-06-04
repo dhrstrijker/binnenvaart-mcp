@@ -1,0 +1,31 @@
+{
+  "name": "binnenvaart-mcp",
+  "version": "0.1.0",
+  "description": "Open MCP server that brings official EuRIS inland-shipping data (water levels, routes, locks, bridges, notices) into any LLM chat tool.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "binnenvaart-mcp": "dist/stdio.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/stdio.js",
+    "dev": "tsc -p tsconfig.json && node dist/stdio.js",
+    "dev:http": "tsc -p tsconfig.json && node dist/httpDev.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
