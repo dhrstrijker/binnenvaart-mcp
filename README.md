@@ -80,10 +80,6 @@ Every tool returns **normalized data plus its provenance and its gaps**, never a
 - `bronregels` — where each value came from (which EuRIS service, observed when), so the model can cite it;
 - `datagaten` — honest "this is missing / stale / ambiguous" markers instead of an invented number.
 
-A water level is always reported **against its datum** — a datum is not a live level. A route makes clear it was computed **for the dimensions you gave** (and says so when you gave none). This is source data to reason with — **not binding nautical advice.** The skipper and the official sources decide.
-
-See [`docs/adr/`](docs/adr) for the decisions behind this (notably ADR-0004, _tools return data primitives_).
-
 ## Data source & attribution
 
 All data comes from **[EuRIS](https://www.eurisportal.eu)** (European River Information Services) open-data endpoints — Hydrometeo (water levels), the RIS Index (objects), RouteCalculatorV2 (voyages) and Notices to Skippers. This project is not affiliated with or endorsed by EuRIS; it simply reads their public open data.
