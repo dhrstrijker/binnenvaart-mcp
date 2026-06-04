@@ -1,10 +1,10 @@
 # binnenvaart-mcp
 
-**Official inland-shipping data — water levels, routes, locks, bridges, and notices to skippers — in any LLM chat tool. Open data, no API key.**
+**Official inland-shipping data — water levels, routes, locks, bridges, and notices to skippers — as callable tools for any MCP-capable LLM. Open data, no API key.**
 
 `binnenvaart-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server that brings live [EuRIS](https://www.eurisportal.eu) open data into Claude, Cursor, or any MCP-capable chat tool. Ask _"what's the water level at Kaub?"_ or _"plan a route from Nijmegen to Gorinchem for a ship with 3.50 m draught"_ and get answers grounded in the official European River Information Services — across the Netherlands, Belgium, the German Rhine and France.
 
-It runs two ways: as a **hosted URL** you add to your chat tool (nothing to install), or **locally over stdio** for developers.
+> **Who this is for.** This is **developer infrastructure, not a consumer app.** Using it means adding an MCP server to a tool like Claude Desktop or Cursor, or wiring it into something you build — a technical step today. A non-technical skipper won't (and shouldn't have to) add an MCP server to their phone; this repo is the open **data layer** for builders and the ecosystem. A skipper-facing product is a separate effort.
 
 ## Why this exists
 
@@ -30,9 +30,11 @@ The tools speak Dutch (the skipper's language); the model translates as needed.
 
 ## Use it
 
-### Hosted — no install
+> **Reality check.** Adding an MCP server is a developer step today — not a one-tap mobile install. For the **hosted** endpoint, most chat tools require a **paid plan**, you set it up in the **web/desktop app (not on mobile)**, and ChatGPT additionally needs **Developer Mode** enabled. If that's not your idea of a good time, this tool isn't aimed at you yet.
 
-Add this remote MCP server to a client that supports custom/remote connectors (Streamable HTTP):
+### Hosted — HTTP
+
+Add this remote MCP server to a client that supports custom / remote connectors (Streamable HTTP):
 
 ```
 https://binnenvaart-mcp.vercel.app/api/mcp
@@ -50,7 +52,7 @@ For clients configured by file, that's roughly:
 
 Open data — no key required.
 
-### Local — stdio
+### Local — stdio (developers)
 
 ```bash
 git clone https://github.com/dhrstrijker/binnenvaart-mcp.git
@@ -82,7 +84,7 @@ Every tool returns **normalized data plus its provenance and its gaps**, never a
 
 ## Data source & attribution
 
-All data comes from **[EuRIS](https://www.eurisportal.eu)** (European River Information Services) open-data endpoints — Hydrometeo (water levels), the RIS Index (objects), RouteCalculatorV2 (voyages) and Notices to Skippers. This project is not affiliated with or endorsed by EuRIS; it simply reads their public open data.
+All data comes from **[EuRIS](https://www.eurisportal.eu)** (European River Information Services) open-data APIs — Hydrometeo (water levels), the RIS Index (objects), RouteCalculatorV2 (voyages) and Notices to Skippers. Per EuRIS's terms, the data is **incorporated from EuRIS (eurisportal.eu), Copyright © EuRIS**. This project is independent — **not affiliated with or endorsed by EuRIS** — and reads only their public open data (no GDPR-protected personal data).
 
 ## Develop
 
