@@ -1,0 +1,100 @@
+{
+  "items": [
+    {
+      "headerId": "a8b9357e-8293-4d2c-acdc-bf6ec4052f5b",
+      "sectionId": "046d09af-6e60-4ddc-934d-ead4cee91c1c",
+      "internalId": null,
+      "organisation": "Rijkswaterstaat",
+      "dateIssue": "2026-05-26T13:07:23.064+02:00",
+      "dateStart": "2026-05-26",
+      "dateEnd": "2026-06-09",
+      "state": 80,
+      "messageType": 1,
+      "title": "No limitation - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal",
+      "number": "2026/3067/0",
+      "countryCode": "NL",
+      "country": "Netherlands",
+      "fairways": [
+        "Amsterdam-Rijnkanaal",
+        "Waal"
+      ],
+      "targetaudiences": [],
+      "multilanguageTitles": "{\"nl\":\"geen beperking - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\",\"fr\":\"Conditions normales de navigation - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\",\"en\":\"No limitation - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\",\"bg\":\"Без ограничение - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\",\"cs\":\"bez omezení - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\",\"de\":\"keine Einschränkung - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\",\"hr\":\"Bez ograničenja - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\",\"hu\":\"nincs korlátozás - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\",\"ro\":\"fără restricții - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\",\"sk\":\"bez obmedzenia - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\",\"sr\":\"Без ограничења - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Amsterdam-Rijnkanaal\"}",
+      "multilanguageTooltips": "{\"nl\":\"geen beperking\",\"fr\":\"Conditions normales de navigation\",\"en\":\"No limitation\",\"bg\":\"Без ограничение\",\"cs\":\"bez omezení\",\"de\":\"keine Einschränkung\",\"hr\":\"Bez ograničenja\",\"hu\":\"nincs korlátozás\",\"ro\":\"fără restricții\",\"sk\":\"bez obmedzenia\",\"sr\":\"Без ограничења\"}",
+      "limitations": [
+        "NOLIM"
+      ],
+      "stateMessage": "Published",
+      "messageTypeMessage": "fairway message",
+      "year": "2026",
+      "versionId": "3910196c-8168-4d0f-b3f4-908a1cc9410a",
+      "originator": "Waterkamer",
+      "isMissingData": false,
+      "processedAt": "2026-05-26T11:10:49.35168+00:00"
+    },
+    {
+      "headerId": "719b9a81-d8ca-48ec-83e0-5dbd12002cd6",
+      "sectionId": "f1a079e9-981b-4d5f-9ae2-dc21df76c6e9",
+      "internalId": null,
+      "organisation": "Rijkswaterstaat",
+      "dateIssue": "2026-05-06T09:22:44.8530048+02:00",
+      "dateStart": "2025-01-16",
+      "dateEnd": "9999-12-31",
+      "state": 80,
+      "messageType": 1,
+      "title": "clearance height - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)",
+      "number": "2025/308/4",
+      "countryCode": "NL",
+      "country": "Netherlands",
+      "fairways": [
+        "Waal"
+      ],
+      "targetaudiences": [],
+      "multilanguageTitles": "{\"nl\":\"doorvaarthoogte - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\",\"fr\":\"Hauteur libre - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\",\"en\":\"clearance height - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\",\"bg\":\"Свободна височина - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\",\"cs\":\"podjezdná výška - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\",\"de\":\"Durchfahrtshöhe - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\",\"hr\":\"Visina plovnog otvora - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\",\"hu\":\"szabad űrszelvény magasság - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\",\"ro\":\"gabaritul de înălțime - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\",\"sk\":\"podjazdná výška - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\",\"sr\":\"Слободна висина - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, Waalbrug Nijmegen (Nijmegen)\"}",
+      "multilanguageTooltips": "{\"nl\":\"doorvaarthoogte\",\"fr\":\"Hauteur libre\",\"en\":\"clearance height\",\"bg\":\"Свободна височина\",\"cs\":\"podjezdná výška\",\"de\":\"Durchfahrtshöhe\",\"hr\":\"Visina plovnog otvora\",\"hu\":\"szabad űrszelvény magasság\",\"ro\":\"gabaritul de înălțime\",\"sk\":\"podjazdná výška\",\"sr\":\"Слободна висина\"}",
+      "limitations": [
+        "CLEHEI"
+      ],
+      "stateMessage": "Published",
+      "messageTypeMessage": "fairway message",
+      "year": "2025",
+      "versionId": "4a96188b-b2e4-4b75-bacb-d969e9bb66aa",
+      "originator": "Waterkamer",
+      "isMissingData": false,
+      "processedAt": "2026-05-06T07:31:21.4738304+00:00"
+    },
+    {
+      "headerId": "af3c96bb-f755-4cf2-a504-7cd8dd940317",
+      "sectionId": "12f07933-c6ee-4077-9fc3-544d36987c18",
+      "internalId": null,
+      "organisation": "Rijkswaterstaat",
+      "dateIssue": "2026-02-18T11:56:48.5830016+01:00",
+      "dateStart": "2026-07-19",
+      "dateEnd": "2026-07-19",
+      "state": 80,
+      "messageType": 1,
+      "title": "Special caution - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, from km 24.5 to km 25.4 (KMR883)",
+      "number": "2026/1050/0",
+      "countryCode": "NL",
+      "country": "Netherlands",
+      "fairways": [
+        "Waal"
+      ],
+      "targetaudiences": [],
+      "multilanguageTitles": "{\"nl\":\"bijzondere voorzichtigheid - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, van km 24.5 tot km 25.4 (KMR883)\",\"fr\":\"Vigilance particulière - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, du km 24.5 au km 25.4 (KMR883)\",\"en\":\"Special caution - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, from km 24.5 to km 25.4 (KMR883)\",\"bg\":\"Особено внимание - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, от km 24.5 до km 25.4 (KMR883)\",\"cs\":\"zvýšená opatrnost - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, od km 24.5 do km 25.4 (KMR883)\",\"de\":\"besondere Vorsicht - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, vom km 24.5 bis km 25.4 (KMR883)\",\"hr\":\"Poseban oprez - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, iz km 24.5 prema km 25.4 (KMR883)\",\"hu\":\"kiemelt óvatosság - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, ettől: km 24.5 eddig: km 25.4 (KMR883)\",\"ro\":\"vigilență mărită - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, de la km 24.5 spre km 25.4 (KMR883)\",\"sk\":\"zvýšená opatrnosť - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, od km 24.5 do km 25.4 (KMR883)\",\"sr\":\"Посебан опрез - Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord, из km 24.5 до km 25.4 (KMR883)\"}",
+      "multilanguageTooltips": "{\"nl\":\"bijzondere voorzichtigheid\",\"fr\":\"Vigilance particulière\",\"en\":\"Special caution\",\"bg\":\"Особено внимание\",\"cs\":\"zvýšená opatrnost\",\"de\":\"besondere Vorsicht\",\"hr\":\"Poseban oprez\",\"hu\":\"kiemelt óvatosság\",\"ro\":\"vigilență mărită\",\"sk\":\"zvýšená opatrnosť\",\"sr\":\"Посебан опрез\"}",
+      "limitations": [
+        "CAUTIO"
+      ],
+      "stateMessage": "Published",
+      "messageTypeMessage": "fairway message",
+      "year": "2026",
+      "versionId": "270449b4-33fd-4019-9cae-5ff2b4849028",
+      "originator": "Waterkamer",
+      "isMissingData": false,
+      "processedAt": "2026-02-18T11:01:01.726592+00:00"
+    }
+  ],
+  "nextPageLink": null,
+  "count": 5
+}

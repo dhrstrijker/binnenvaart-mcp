@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getNotices, getVoyage, getWaterLevel, searchObjects } from "../sources/euris.js";
+import { guarded } from "./result.js";
 
 /**
  * Register every tool on a server.
@@ -15,8 +16,7 @@ export function registerTools(server: McpServer): void {
     "echo",
     {
       title: "Echo",
-      description:
-        "Echo the given text back unchanged. A smoke-test tool to confirm the server is wired up.",
+      description: "Echo the given text back unchanged. A smoke-test tool to confirm the server is wired up.",
       inputSchema: { text: z.string().describe("The text to echo back.") },
     },
     async ({ text }) => ({ content: [{ type: "text", text }] }),
@@ -41,13 +41,7 @@ export function registerTools(server: McpServer): void {
           .describe("Plaats, meetlocatie of vaarweg, bijvoorbeeld 'Kaub', 'Nijmegen' of 'Antwerpen'."),
       },
     },
-    async ({ locatie }) => {
-      const result = await getWaterLevel(locatie);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        isError: result.data === undefined,
-      };
-    },
+    async ({ locatie }) => guarded("euris-waterstand-unexpected", () => getWaterLevel(locatie)),
   );
 
   // M3 — resolve a place/object name to ISRS candidates from the EuRIS RIS index.
@@ -65,16 +59,12 @@ export function registerTools(server: McpServer): void {
       inputSchema: {
         query: z
           .string()
-          .describe("Naam van een plaats of object, bijvoorbeeld 'Nijmegen', 'Sluis Weurt' of 'Volkeraksluizen'."),
+          .describe(
+            "Naam van een plaats of object, bijvoorbeeld 'Nijmegen', 'Sluis Weurt' of 'Volkeraksluizen'.",
+          ),
       },
     },
-    async ({ query }) => {
-      const result = await searchObjects(query);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        isError: result.data === undefined,
-      };
-    },
+    async ({ query }) => guarded("euris-zoek-unexpected", () => searchObjects(query)),
   );
 
   // M3 — voyage calculation between two points (EuRIS RouteCalculatorV2). Returns
@@ -115,13 +105,7 @@ export function registerTools(server: McpServer): void {
           ),
       },
     },
-    async ({ van, naar, schip }) => {
-      const result = await getVoyage(van, naar, schip);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        isError: result.data === undefined,
-      };
-    },
+    async ({ van, naar, schip }) => guarded("euris-route-unexpected", () => getVoyage(van, naar, schip)),
   );
 
   // M3 — current Notices to Skippers (NtS) from EuRIS: closures, cautions,
@@ -141,19 +125,12 @@ export function registerTools(server: McpServer): void {
         vaarweg: z
           .string()
           .optional()
-          .describe("Exacte vaarwegnaam om op te filteren, bijvoorbeeld 'Waal' of 'Albertkanaal'. Optioneel."),
-        land: z
-          .string()
-          .optional()
-          .describe("Landcode om op te filteren: NL, BE, DE of FR. Optioneel."),
+          .describe(
+            "Exacte vaarwegnaam om op te filteren, bijvoorbeeld 'Waal' of 'Albertkanaal'. Optioneel.",
+          ),
+        land: z.string().optional().describe("Landcode om op te filteren: NL, BE, DE of FR. Optioneel."),
       },
     },
-    async ({ vaarweg, land }) => {
-      const result = await getNotices({ vaarweg, land });
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        isError: result.data === undefined,
-      };
-    },
+    async ({ vaarweg, land }) => guarded("euris-berichten-unexpected", () => getNotices({ vaarweg, land })),
   );
 }

@@ -1,0 +1,10 @@
+{
+  "//": "Type-checks src + tests together without emitting (tests must never land in dist). Used by `npm run typecheck`.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "api/**/*.ts", "vitest.config.ts"]
+}

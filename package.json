@@ -15,7 +15,12 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "start": "node dist/stdio.js",
     "dev": "tsc -p tsconfig.json && node dist/stdio.js",
     "dev:http": "tsc -p tsconfig.json && node dist/httpDev.js"
@@ -25,7 +30,13 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^24.0.0",
-    "typescript": "^5.9.0"
+    "eslint": "^10.4.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.60.1",
+    "vitest": "^4.1.8"
   }
 }

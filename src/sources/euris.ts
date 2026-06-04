@@ -98,7 +98,8 @@ export async function getWaterLevel(query: string): Promise<SourceResult<WaterLe
       {
         source: "EuRIS",
         subject: `Waterstand ${best.locationName}`,
-        value: `${best.value} ${best.unit}`.trim() + (best.referenceLevel ? ` t.o.v. ${best.referenceLevel}` : ""),
+        value:
+          `${best.value} ${best.unit}`.trim() + (best.referenceLevel ? ` t.o.v. ${best.referenceLevel}` : ""),
         observedAt: best.measuredAt,
         note: "EuRIS Hydrometeo_v3 (WAL)",
       },
@@ -131,8 +132,7 @@ export async function searchObjects(query: string): Promise<SourceResult<ObjectC
   }
 
   const url =
-    `${BASE_URL}/visuris/api/RisIndices_v2/GetRISIndexObjects` +
-    `?$search=${encodeURIComponent(q)}&$top=8`;
+    `${BASE_URL}/visuris/api/RisIndices_v2/GetRISIndexObjects` + `?$search=${encodeURIComponent(q)}&$top=8`;
 
   let page: unknown;
   try {
@@ -311,7 +311,9 @@ export async function getVoyage(
         source: "EuRIS",
         subject: `Route ${vanNaam ?? start.isrs} → ${naarNaam ?? end.isrs}`,
         value: varianten
-          .map((v) => `${v.type}: ${v.afstandKm} km, ${v.vaartijdMinuten} min, ${v.aantalSluizen} sluis/sluizen`)
+          .map(
+            (v) => `${v.type}: ${v.afstandKm} km, ${v.vaartijdMinuten} min, ${v.aantalSluizen} sluis/sluizen`,
+          )
           .join(" | "),
         observedAt: vertrek,
         note: "EuRIS RouteCalculatorV2 (voyage)",
@@ -361,7 +363,13 @@ async function resolveEndpoint(
 ): Promise<{ isrs?: string; naam?: string; datagat?: Datagat }> {
   const value = input.trim();
   if (!value) {
-    return { datagat: { code: `euris-route-${role}-missing`, message: `Geen ${role}punt opgegeven.`, severity: "blocking" } };
+    return {
+      datagat: {
+        code: `euris-route-${role}-missing`,
+        message: `Geen ${role}punt opgegeven.`,
+        severity: "blocking",
+      },
+    };
   }
   if (ISRS_PATTERN.test(value)) {
     return { isrs: value };
@@ -477,10 +485,15 @@ function toShipDimensions(schip: ShipDimensions): Record<string, number> {
 function routeError(r: RouteResponse): Datagat {
   const reason = r.ErrorReason ?? "UnexpectedError";
   const tags = (r.ErrorTags ?? {}) as Record<string, unknown>;
-  const tag = (k: string): string | undefined => (typeof tags[k] === "string" ? (tags[k] as string) : undefined);
+  const tag = (k: string): string | undefined =>
+    typeof tags[k] === "string" ? (tags[k] as string) : undefined;
   switch (reason) {
     case "NoRoute":
-      return { code: "euris-route-none", message: "Geen route gevonden tussen deze punten met deze afmetingen.", severity: "caution" };
+      return {
+        code: "euris-route-none",
+        message: "Geen route gevonden tussen deze punten met deze afmetingen.",
+        severity: "caution",
+      };
     case "Blocked":
       return {
         code: "euris-route-blocked",
@@ -548,7 +561,12 @@ const NTS_MAX = 25;
 
 export async function getNotices(opts: { vaarweg?: string; land?: string }): Promise<SourceResult<Notice[]>> {
   const vaarweg = opts.vaarweg?.trim() || undefined;
-  const land = opts.land?.trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2) || undefined;
+  const land =
+    opts.land
+      ?.trim()
+      .toUpperCase()
+      .replace(/[^A-Z]/g, "")
+      .slice(0, 2) || undefined;
 
   const today = new Date().toISOString().slice(0, 10);
   const clauses = [`dateEnd ge ${today}T00:00:00Z`]; // active or upcoming only
@@ -571,7 +589,7 @@ export async function getNotices(opts: { vaarweg?: string; land?: string }): Pro
   }
 
   const records = recordsFromPage(page);
-  const total = isRecord(page) ? num(page, "count") ?? records.length : records.length;
+  const total = isRecord(page) ? (num(page, "count") ?? records.length) : records.length;
   const notices = records.map(toNotice).filter((n): n is Notice => n !== undefined);
 
   if (!notices.length) {
@@ -665,7 +683,9 @@ async function loadFairwayCatalogue(): Promise<string[]> {
   try {
     const list = await getJson<unknown>(`${NTS_URL}/filters/FAIRWAY`, { token: TOKEN });
     fairwayCatalogue = Array.isArray(list)
-      ? list.map((x) => (isRecord(x) ? str(x, "value", "title") : typeof x === "string" ? x : "")).filter((s) => s)
+      ? list
+          .map((x) => (isRecord(x) ? str(x, "value", "title") : typeof x === "string" ? x : ""))
+          .filter((s) => s)
       : [];
   } catch {
     fairwayCatalogue = [];
@@ -733,7 +753,9 @@ function toWaterLevel(record: Record<string, unknown>): WaterLevel | undefined {
     // Per the EuRIS docs: prefer the general `unit` / `referenceLevel`, and only
     // fall back to the provider-specific `dataUnit` / `dataReferenceLevel`.
     unit: str(record, "unit", "Unit", "dataUnit", "DataUnit") || "",
-    referenceLevel: str(record, "referenceLevel", "ReferenceLevel", "dataReferenceLevel", "DataReferenceLevel") || undefined,
+    referenceLevel:
+      str(record, "referenceLevel", "ReferenceLevel", "dataReferenceLevel", "DataReferenceLevel") ||
+      undefined,
     measuredAt,
     status: dataStatus === 0 ? "measured" : measuredAt ? "stale" : "unknown",
   };

@@ -45,19 +45,12 @@ async function requestJson<T>(url: string, init: RequestInit, options: RequestOp
 }
 
 /** GET a URL and parse the JSON body. */
-export async function getJson<T>(
-  url: string,
-  options: RequestOptions = {},
-): Promise<T> {
+export async function getJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
   return requestJson<T>(url, { method: "GET" }, options);
 }
 
 /** POST a JSON body to a URL and parse the JSON response. */
-export async function postJson<T>(
-  url: string,
-  body: unknown,
-  options: RequestOptions = {},
-): Promise<T> {
+export async function postJson<T>(url: string, body: unknown, options: RequestOptions = {}): Promise<T> {
   return requestJson<T>(
     url,
     {

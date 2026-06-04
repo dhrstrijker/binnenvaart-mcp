@@ -1,0 +1,798 @@
+{
+  "Itineraries": [
+    {
+      "ComputationType": "FASTEST",
+      "TotalLength": 43693,
+      "TotalDuration": 16578,
+      "AllowedDimensions": {
+        "Height": 760,
+        "HeightSource": "ALLOWED",
+        "Width": 1500,
+        "WidthSource": "ALLOWED",
+        "Draught": 340,
+        "DraughtSource": "ALLOWED",
+        "Length": 13500,
+        "LengthSource": "ALLOWED",
+        "CEMT": "VIb"
+      },
+      "TideDependent": false,
+      "NumberOfLocks": 3,
+      "Geometry": null,
+      "Legs": [
+        {
+          "FromIsrs": "BEWJG02047LOCKS01198",
+          "FromObjectName": "Sluis Wijnegem",
+          "FromMessage": "Vertrek te Sluis Wijnegem",
+          "ToIsrs": "BEHAW02033L036200763",
+          "ToObjectName": "Wachtplaats Ham LO Kmp. 76.3",
+          "ToMessage": "Aankomst te Wachtplaats Ham LO Kmp. 76.3",
+          "Message": "Sluis Wijnegem - Wachtplaats Ham LO Kmp. 76.3",
+          "ETA": "2026-06-05T12:36:18.389",
+          "ETD": "2026-06-05T08:00:00",
+          "Length": 43693,
+          "Segments": [
+            {
+              "SegmentName": "De Vlaamse Waterweg nv",
+              "Message": "Tol te betalen aan De Vlaamse Waterweg nv",
+              "CompressedGeometry": null,
+              "ManeuverType": "ChargesStart",
+              "WaterwayName": "Albertkanaal",
+              "FairwaySectionId": "BE0204700000",
+              "Authority": "De Vlaamse Waterweg nv",
+              "Direction": "UPSTREAM",
+              "ETA": "2026-06-05T08:00:00",
+              "ETD": "2026-06-05T08:00:00",
+              "Length": 0,
+              "Events": [],
+              "Dimensions": {
+                "Height": 760,
+                "Width": 1500,
+                "Draught": 340,
+                "Length": 13500,
+                "CEMT": null
+              },
+              "CountryCodes": [
+                "BE"
+              ],
+              "SegmentProperties": {}
+            },
+            {
+              "SegmentName": "Albertkanaal",
+              "Message": "Opwaarts op Albertkanaal",
+              "CompressedGeometry": null,
+              "ManeuverType": "Straight",
+              "WaterwayName": "Albertkanaal",
+              "FairwaySectionId": "BE0204700000",
+              "Authority": "De Vlaamse Waterweg nv",
+              "Direction": "UPSTREAM",
+              "ETA": "2026-06-05T12:36:18.389",
+              "ETD": "2026-06-05T08:00:00",
+              "Length": 43693,
+              "Events": [
+                {
+                  "EventType": "Lock",
+                  "ISRS": "BEWJG02047LOCKS01198",
+                  "ObjectName": "Sluis Wijnegem",
+                  "EventMessage": "Sluis Wijnegem",
+                  "Latitude": 51.226654198841764,
+                  "Longitude": 4.537800223056678,
+                  "ETA": "2026-06-05T08:00:00",
+                  "ETD": "2026-06-05T08:32:00",
+                  "RelativeDistance": 0,
+                  "AbsoluteDistance": 0,
+                  "Dimensions": {
+                    "Height": 760,
+                    "Width": 1500,
+                    "Draught": 340,
+                    "Length": 760,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {}
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BERAS02046BRGA101168",
+                  "ObjectName": "Brug 2 Oelegem",
+                  "EventMessage": "Brug 2 Oelegem",
+                  "Latitude": 51.21464403222424,
+                  "Longitude": 4.576264810708237,
+                  "ETA": "2026-06-05T08:44:32.353",
+                  "ETD": "2026-06-05T08:44:32.353",
+                  "RelativeDistance": 3005,
+                  "AbsoluteDistance": 3005,
+                  "Dimensions": {
+                    "Height": 929,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 929,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "929",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "929",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "4978"
+                  }
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEZAN02045BRGA101118",
+                  "ObjectName": "Brug Massenhoven",
+                  "EventMessage": "Brug Massenhoven",
+                  "Latitude": 51.19625801617891,
+                  "Longitude": 4.641830009623505,
+                  "ETA": "2026-06-05T09:04:44.757",
+                  "ETD": "2026-06-05T09:04:44.757",
+                  "RelativeDistance": 8053,
+                  "AbsoluteDistance": 8053,
+                  "Dimensions": {
+                    "Height": 938,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 938,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "938",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "938",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "5001"
+                  }
+                },
+                {
+                  "EventType": "Vpln",
+                  "ISRS": "BEZAN02043F594001097",
+                  "ObjectName": "Splitsing Albertkanaal - Netekanaal",
+                  "EventMessage": "Splitsing Albertkanaal - Netekanaal",
+                  "Latitude": 51.19074854328795,
+                  "Longitude": 4.666697906761425,
+                  "ETA": "2026-06-05T09:13:11.449",
+                  "ETD": "2026-06-05T09:13:11.449",
+                  "RelativeDistance": 10061,
+                  "AbsoluteDistance": 10061,
+                  "Dimensions": null,
+                  "EventProperties": {}
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEGBB02042BRGA101043",
+                  "ObjectName": "Brug Grobbendonk",
+                  "EventMessage": "Brug Grobbendonk",
+                  "Latitude": 51.179887913834555,
+                  "Longitude": 4.744878989171374,
+                  "ETA": "2026-06-05T09:35:15.612",
+                  "ETD": "2026-06-05T09:35:15.612",
+                  "RelativeDistance": 15511,
+                  "AbsoluteDistance": 15511,
+                  "Dimensions": {
+                    "Height": 904,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 904,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "904",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "904",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "8600"
+                  }
+                },
+                {
+                  "EventType": "Vpln",
+                  "ISRS": "BEHER02040F576500995",
+                  "ObjectName": "Splitsing Albertkanaal - kanaal Bocholt-Herentals",
+                  "EventMessage": "Splitsing Albertkanaal - kanaal Bocholt-Herentals",
+                  "Latitude": 51.17258117713806,
+                  "Longitude": 4.811737849441552,
+                  "ETA": "2026-06-05T09:54:33.736",
+                  "ETD": "2026-06-05T09:54:33.736",
+                  "RelativeDistance": 20335,
+                  "AbsoluteDistance": 20335,
+                  "Dimensions": null,
+                  "EventProperties": {}
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEHER02040BRGA100981",
+                  "ObjectName": "Brug Herentals Herenthout",
+                  "EventMessage": "Brug Herentals Herenthout",
+                  "Latitude": 51.1675984989852,
+                  "Longitude": 4.830435609722485,
+                  "ETA": "2026-06-05T10:00:00.264",
+                  "ETD": "2026-06-05T10:00:00.264",
+                  "RelativeDistance": 21695,
+                  "AbsoluteDistance": 21695,
+                  "Dimensions": {
+                    "Height": 927,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 927,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "927",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "927",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "5040"
+                  }
+                },
+                {
+                  "EventType": "Rdocal",
+                  "ISRS": "BEHER02040RDCL100981",
+                  "ObjectName": "rdocal sluis Olen",
+                  "EventMessage": "Radio punt ter hoogte van rdocal sluis Olen",
+                  "Latitude": 51.1675984989852,
+                  "Longitude": 4.830435609722485,
+                  "ETA": "2026-06-05T10:00:05.766",
+                  "ETD": "2026-06-05T10:00:05.766",
+                  "RelativeDistance": 21717,
+                  "AbsoluteDistance": 21717,
+                  "Dimensions": null,
+                  "EventProperties": {
+                    "Comcha": "20"
+                  }
+                },
+                {
+                  "EventType": "Lock",
+                  "ISRS": "BEOLN02038LOCKS00958",
+                  "ObjectName": "sluis Olen",
+                  "EventMessage": "sluis Olen",
+                  "Latitude": 51.15912145768454,
+                  "Longitude": 4.860202075990962,
+                  "ETA": "2026-06-05T10:09:09.731",
+                  "ETD": "2026-06-05T10:43:09.731",
+                  "RelativeDistance": 23983,
+                  "AbsoluteDistance": 23983,
+                  "Dimensions": {
+                    "Height": 880,
+                    "Width": 1500,
+                    "Draught": 340,
+                    "Length": 880,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {}
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEOLN02038BRGA100929",
+                  "ObjectName": "Brug Olen Hoogbuul",
+                  "EventMessage": "Brug Olen Hoogbuul",
+                  "Latitude": 51.148722362582,
+                  "Longitude": 4.899140260741847,
+                  "ETA": "2026-06-05T10:55:00.485",
+                  "ETD": "2026-06-05T10:55:00.485",
+                  "RelativeDistance": 26945,
+                  "AbsoluteDistance": 26945,
+                  "Dimensions": {
+                    "Height": 924,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 924,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "924",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "924",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "5000"
+                  }
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEGEL02036BRGA100865",
+                  "ObjectName": "Brug Geel Stelen",
+                  "EventMessage": "Brug Geel Stelen",
+                  "Latitude": 51.12542087962396,
+                  "Longitude": 4.982709869901228,
+                  "ETA": "2026-06-05T11:20:38.202",
+                  "ETD": "2026-06-05T11:20:38.202",
+                  "RelativeDistance": 33352,
+                  "AbsoluteDistance": 33352,
+                  "Dimensions": {
+                    "Height": 942,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 942,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "942",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "942",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "4870"
+                  }
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEMEH02034BRGA100812",
+                  "ObjectName": "Brug Meerhout Veedijk",
+                  "EventMessage": "Brug Meerhout Veedijk",
+                  "Latitude": 51.10759047991817,
+                  "Longitude": 5.0530457999856155,
+                  "ETA": "2026-06-05T11:41:53.277",
+                  "ETD": "2026-06-05T11:41:53.277",
+                  "RelativeDistance": 38664,
+                  "AbsoluteDistance": 38664,
+                  "Dimensions": {
+                    "Height": 947,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 947,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "947",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "947",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "4980"
+                  }
+                },
+                {
+                  "EventType": "Rdocal",
+                  "ISRS": "BELDA02034RDCL100796",
+                  "ObjectName": "rdocal sluis Kwaadmechelen",
+                  "EventMessage": "Radio punt ter hoogte van rdocal sluis Kwaadmechelen",
+                  "Latitude": 51.10393690463847,
+                  "Longitude": 5.073900819062716,
+                  "ETA": "2026-06-05T11:48:03.243",
+                  "ETD": "2026-06-05T11:48:03.243",
+                  "RelativeDistance": 40204,
+                  "AbsoluteDistance": 40204,
+                  "Dimensions": null,
+                  "EventProperties": {
+                    "Comcha": "20"
+                  }
+                },
+                {
+                  "EventType": "Lock",
+                  "ISRS": "BEHAW02033LOCKS00771",
+                  "ObjectName": "sluis Kwaadmechelen",
+                  "EventMessage": "sluis Kwaadmechelen",
+                  "Latitude": 51.09786454493147,
+                  "Longitude": 5.1077175866425275,
+                  "ETA": "2026-06-05T11:57:49.065",
+                  "ETD": "2026-06-05T12:31:49.065",
+                  "RelativeDistance": 42645,
+                  "AbsoluteDistance": 42645,
+                  "Dimensions": {
+                    "Height": 880,
+                    "Width": 1500,
+                    "Draught": 340,
+                    "Length": 880,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {}
+                }
+              ],
+              "Dimensions": {
+                "Height": 760,
+                "Width": 1500,
+                "Draught": 340,
+                "Length": 13500,
+                "CEMT": null
+              },
+              "CountryCodes": [
+                "BE"
+              ],
+              "SegmentProperties": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ComputationType": "SHORTEST",
+      "TotalLength": 43693,
+      "TotalDuration": 16578,
+      "AllowedDimensions": {
+        "Height": 760,
+        "HeightSource": "ALLOWED",
+        "Width": 1500,
+        "WidthSource": "ALLOWED",
+        "Draught": 340,
+        "DraughtSource": "ALLOWED",
+        "Length": 13500,
+        "LengthSource": "ALLOWED",
+        "CEMT": "VIb"
+      },
+      "TideDependent": false,
+      "NumberOfLocks": 3,
+      "Geometry": null,
+      "Legs": [
+        {
+          "FromIsrs": "BEWJG02047LOCKS01198",
+          "FromObjectName": "Sluis Wijnegem",
+          "FromMessage": "Vertrek te Sluis Wijnegem",
+          "ToIsrs": "BEHAW02033L036200763",
+          "ToObjectName": "Wachtplaats Ham LO Kmp. 76.3",
+          "ToMessage": "Aankomst te Wachtplaats Ham LO Kmp. 76.3",
+          "Message": "Sluis Wijnegem - Wachtplaats Ham LO Kmp. 76.3",
+          "ETA": "2026-06-05T12:36:18.389",
+          "ETD": "2026-06-05T08:00:00",
+          "Length": 43693,
+          "Segments": [
+            {
+              "SegmentName": "De Vlaamse Waterweg nv",
+              "Message": "Tol te betalen aan De Vlaamse Waterweg nv",
+              "CompressedGeometry": null,
+              "ManeuverType": "ChargesStart",
+              "WaterwayName": "Albertkanaal",
+              "FairwaySectionId": "BE0204700000",
+              "Authority": "De Vlaamse Waterweg nv",
+              "Direction": "UPSTREAM",
+              "ETA": "2026-06-05T08:00:00",
+              "ETD": "2026-06-05T08:00:00",
+              "Length": 0,
+              "Events": [],
+              "Dimensions": {
+                "Height": 760,
+                "Width": 1500,
+                "Draught": 340,
+                "Length": 13500,
+                "CEMT": null
+              },
+              "CountryCodes": [
+                "BE"
+              ],
+              "SegmentProperties": {}
+            },
+            {
+              "SegmentName": "Albertkanaal",
+              "Message": "Opwaarts op Albertkanaal",
+              "CompressedGeometry": null,
+              "ManeuverType": "Straight",
+              "WaterwayName": "Albertkanaal",
+              "FairwaySectionId": "BE0204700000",
+              "Authority": "De Vlaamse Waterweg nv",
+              "Direction": "UPSTREAM",
+              "ETA": "2026-06-05T12:36:18.389",
+              "ETD": "2026-06-05T08:00:00",
+              "Length": 43693,
+              "Events": [
+                {
+                  "EventType": "Lock",
+                  "ISRS": "BEWJG02047LOCKS01198",
+                  "ObjectName": "Sluis Wijnegem",
+                  "EventMessage": "Sluis Wijnegem",
+                  "Latitude": 51.226654198841764,
+                  "Longitude": 4.537800223056678,
+                  "ETA": "2026-06-05T08:00:00",
+                  "ETD": "2026-06-05T08:32:00",
+                  "RelativeDistance": 0,
+                  "AbsoluteDistance": 0,
+                  "Dimensions": {
+                    "Height": 760,
+                    "Width": 1500,
+                    "Draught": 340,
+                    "Length": 760,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {}
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BERAS02046BRGA101168",
+                  "ObjectName": "Brug 2 Oelegem",
+                  "EventMessage": "Brug 2 Oelegem",
+                  "Latitude": 51.21464403222424,
+                  "Longitude": 4.576264810708237,
+                  "ETA": "2026-06-05T08:44:32.353",
+                  "ETD": "2026-06-05T08:44:32.353",
+                  "RelativeDistance": 3005,
+                  "AbsoluteDistance": 3005,
+                  "Dimensions": {
+                    "Height": 929,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 929,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "929",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "929",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "4978"
+                  }
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEZAN02045BRGA101118",
+                  "ObjectName": "Brug Massenhoven",
+                  "EventMessage": "Brug Massenhoven",
+                  "Latitude": 51.19625801617891,
+                  "Longitude": 4.641830009623505,
+                  "ETA": "2026-06-05T09:04:44.757",
+                  "ETD": "2026-06-05T09:04:44.757",
+                  "RelativeDistance": 8053,
+                  "AbsoluteDistance": 8053,
+                  "Dimensions": {
+                    "Height": 938,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 938,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "938",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "938",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "5001"
+                  }
+                },
+                {
+                  "EventType": "Vpln",
+                  "ISRS": "BEZAN02043F594001097",
+                  "ObjectName": "Splitsing Albertkanaal - Netekanaal",
+                  "EventMessage": "Splitsing Albertkanaal - Netekanaal",
+                  "Latitude": 51.19074854328795,
+                  "Longitude": 4.666697906761425,
+                  "ETA": "2026-06-05T09:13:11.449",
+                  "ETD": "2026-06-05T09:13:11.449",
+                  "RelativeDistance": 10061,
+                  "AbsoluteDistance": 10061,
+                  "Dimensions": null,
+                  "EventProperties": {}
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEGBB02042BRGA101043",
+                  "ObjectName": "Brug Grobbendonk",
+                  "EventMessage": "Brug Grobbendonk",
+                  "Latitude": 51.179887913834555,
+                  "Longitude": 4.744878989171374,
+                  "ETA": "2026-06-05T09:35:15.612",
+                  "ETD": "2026-06-05T09:35:15.612",
+                  "RelativeDistance": 15511,
+                  "AbsoluteDistance": 15511,
+                  "Dimensions": {
+                    "Height": 904,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 904,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "904",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "904",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "8600"
+                  }
+                },
+                {
+                  "EventType": "Vpln",
+                  "ISRS": "BEHER02040F576500995",
+                  "ObjectName": "Splitsing Albertkanaal - kanaal Bocholt-Herentals",
+                  "EventMessage": "Splitsing Albertkanaal - kanaal Bocholt-Herentals",
+                  "Latitude": 51.17258117713806,
+                  "Longitude": 4.811737849441552,
+                  "ETA": "2026-06-05T09:54:33.736",
+                  "ETD": "2026-06-05T09:54:33.736",
+                  "RelativeDistance": 20335,
+                  "AbsoluteDistance": 20335,
+                  "Dimensions": null,
+                  "EventProperties": {}
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEHER02040BRGA100981",
+                  "ObjectName": "Brug Herentals Herenthout",
+                  "EventMessage": "Brug Herentals Herenthout",
+                  "Latitude": 51.1675984989852,
+                  "Longitude": 4.830435609722485,
+                  "ETA": "2026-06-05T10:00:00.264",
+                  "ETD": "2026-06-05T10:00:00.264",
+                  "RelativeDistance": 21695,
+                  "AbsoluteDistance": 21695,
+                  "Dimensions": {
+                    "Height": 927,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 927,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "927",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "927",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "5040"
+                  }
+                },
+                {
+                  "EventType": "Rdocal",
+                  "ISRS": "BEHER02040RDCL100981",
+                  "ObjectName": "rdocal sluis Olen",
+                  "EventMessage": "Radio punt ter hoogte van rdocal sluis Olen",
+                  "Latitude": 51.1675984989852,
+                  "Longitude": 4.830435609722485,
+                  "ETA": "2026-06-05T10:00:05.766",
+                  "ETD": "2026-06-05T10:00:05.766",
+                  "RelativeDistance": 21717,
+                  "AbsoluteDistance": 21717,
+                  "Dimensions": null,
+                  "EventProperties": {
+                    "Comcha": "20"
+                  }
+                },
+                {
+                  "EventType": "Lock",
+                  "ISRS": "BEOLN02038LOCKS00958",
+                  "ObjectName": "sluis Olen",
+                  "EventMessage": "sluis Olen",
+                  "Latitude": 51.15912145768454,
+                  "Longitude": 4.860202075990962,
+                  "ETA": "2026-06-05T10:09:09.731",
+                  "ETD": "2026-06-05T10:43:09.731",
+                  "RelativeDistance": 23983,
+                  "AbsoluteDistance": 23983,
+                  "Dimensions": {
+                    "Height": 880,
+                    "Width": 1500,
+                    "Draught": 340,
+                    "Length": 880,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {}
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEOLN02038BRGA100929",
+                  "ObjectName": "Brug Olen Hoogbuul",
+                  "EventMessage": "Brug Olen Hoogbuul",
+                  "Latitude": 51.148722362582,
+                  "Longitude": 4.899140260741847,
+                  "ETA": "2026-06-05T10:55:00.485",
+                  "ETD": "2026-06-05T10:55:00.485",
+                  "RelativeDistance": 26945,
+                  "AbsoluteDistance": 26945,
+                  "Dimensions": {
+                    "Height": 924,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 924,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "924",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "924",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "5000"
+                  }
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEGEL02036BRGA100865",
+                  "ObjectName": "Brug Geel Stelen",
+                  "EventMessage": "Brug Geel Stelen",
+                  "Latitude": 51.12542087962396,
+                  "Longitude": 4.982709869901228,
+                  "ETA": "2026-06-05T11:20:38.202",
+                  "ETD": "2026-06-05T11:20:38.202",
+                  "RelativeDistance": 33352,
+                  "AbsoluteDistance": 33352,
+                  "Dimensions": {
+                    "Height": 942,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 942,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "942",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "942",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "4870"
+                  }
+                },
+                {
+                  "EventType": "Bridge",
+                  "ISRS": "BEMEH02034BRGA100812",
+                  "ObjectName": "Brug Meerhout Veedijk",
+                  "EventMessage": "Brug Meerhout Veedijk",
+                  "Latitude": 51.10759047991817,
+                  "Longitude": 5.0530457999856155,
+                  "ETA": "2026-06-05T11:41:53.277",
+                  "ETD": "2026-06-05T11:41:53.277",
+                  "RelativeDistance": 38664,
+                  "AbsoluteDistance": 38664,
+                  "Dimensions": {
+                    "Height": 947,
+                    "Width": 2300,
+                    "Draught": 2147483647,
+                    "Length": 947,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {
+                    "AirDraught": "947",
+                    "AirDraughtSource": "ALLOWED",
+                    "AirDraughtClosed": "947",
+                    "AirDraughtClosedSource": "ALLOWED",
+                    "Operatable": "0",
+                    "ClearanceWidth": "4980"
+                  }
+                },
+                {
+                  "EventType": "Rdocal",
+                  "ISRS": "BELDA02034RDCL100796",
+                  "ObjectName": "rdocal sluis Kwaadmechelen",
+                  "EventMessage": "Radio punt ter hoogte van rdocal sluis Kwaadmechelen",
+                  "Latitude": 51.10393690463847,
+                  "Longitude": 5.073900819062716,
+                  "ETA": "2026-06-05T11:48:03.243",
+                  "ETD": "2026-06-05T11:48:03.243",
+                  "RelativeDistance": 40204,
+                  "AbsoluteDistance": 40204,
+                  "Dimensions": null,
+                  "EventProperties": {
+                    "Comcha": "20"
+                  }
+                },
+                {
+                  "EventType": "Lock",
+                  "ISRS": "BEHAW02033LOCKS00771",
+                  "ObjectName": "sluis Kwaadmechelen",
+                  "EventMessage": "sluis Kwaadmechelen",
+                  "Latitude": 51.09786454493147,
+                  "Longitude": 5.1077175866425275,
+                  "ETA": "2026-06-05T11:57:49.065",
+                  "ETD": "2026-06-05T12:31:49.065",
+                  "RelativeDistance": 42645,
+                  "AbsoluteDistance": 42645,
+                  "Dimensions": {
+                    "Height": 880,
+                    "Width": 1500,
+                    "Draught": 340,
+                    "Length": 880,
+                    "CEMT": "VIb"
+                  },
+                  "EventProperties": {}
+                }
+              ],
+              "Dimensions": {
+                "Height": 760,
+                "Width": 1500,
+                "Draught": 340,
+                "Length": 13500,
+                "CEMT": null
+              },
+              "CountryCodes": [
+                "BE"
+              ],
+              "SegmentProperties": {}
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Success": true,
+  "ErrorReason": "Success",
+  "ErrorMessage": null,
+  "ErrorTags": null
+}
