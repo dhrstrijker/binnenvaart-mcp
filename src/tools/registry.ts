@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getWaterLevel } from "../sources/euris.js";
+import { getVoyage, getWaterLevel, searchObjects } from "../sources/euris.js";
 
 /**
  * Register every tool on a server.
@@ -43,6 +43,80 @@ export function registerTools(server: McpServer): void {
     },
     async ({ locatie }) => {
       const result = await getWaterLevel(locatie);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        isError: result.data === undefined,
+      };
+    },
+  );
+
+  // M3 — resolve a place/object name to ISRS candidates from the EuRIS RIS index.
+  // The model uses this to pin down an exact start/end before routing, and to
+  // disambiguate by asking the skipper which candidate they mean.
+  server.registerTool(
+    "euris_zoek",
+    {
+      title: "Zoek vaarwegobject (EuRIS)",
+      description: [
+        "Zoek vaarwegobjecten (sluizen, bruggen, meldpunten, splitsingen, havens) in de EuRIS RIS-index en krijg hun ISRS-code terug.",
+        "Gebruik dit om een exact begin- of eindpunt te bepalen vóór een routeberekening, of om bij twijfel de schipper te laten kiezen uit kandidaten.",
+        "Elke kandidaat bevat het objecttype, de vaarweg en de plaats, zodat je gericht kunt doorvragen. Geef geen bindend vaaradvies; dit is brondata.",
+      ].join(" "),
+      inputSchema: {
+        query: z
+          .string()
+          .describe("Naam van een plaats of object, bijvoorbeeld 'Nijmegen', 'Sluis Weurt' of 'Volkeraksluizen'."),
+      },
+    },
+    async ({ query }) => {
+      const result = await searchObjects(query);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        isError: result.data === undefined,
+      };
+    },
+  );
+
+  // M3 — voyage calculation between two points (EuRIS RouteCalculatorV2). Returns
+  // alternatives (fastest/shortest) with distance, time, locks and bridges,
+  // honouring operating hours, tides and notices. Dimensions feed passability.
+  server.registerTool(
+    "euris_route",
+    {
+      title: "Routeberekening (EuRIS)",
+      description: [
+        "Bereken een vaarroute tussen een begin- en eindpunt via EuRIS: afstand, vaartijd, sluizen en bruggen, met inachtneming van bedientijden, getij en actuele berichten aan de scheepvaart.",
+        "Geef begin en eind het liefst als ISRS-code (bepaal die eerst met euris_zoek). Een naam mag ook; bij meerdere mogelijke punten krijg je kandidaten terug — vraag de schipper dan welke en herhaal met de ISRS-code.",
+        "Vraag de schipper vóór de berekening naar de scheepsafmetingen, vooral diepgang en doorvaarthoogte (in cm): welke sluizen en bruggen passeerbaar zijn hangt daarvan af.",
+        "Je krijgt één of meer varianten (snelste/kortste) terug om uit te kiezen. Geef geen bindend vaaradvies; dit is brondata, de schipper en officiële bronnen beslissen.",
+      ].join(" "),
+      inputSchema: {
+        van: z
+          .string()
+          .describe("Beginpunt: ISRS-code (aanbevolen, via euris_zoek) of een plaats-/objectnaam."),
+        naar: z
+          .string()
+          .describe("Eindpunt: ISRS-code (aanbevolen, via euris_zoek) of een plaats-/objectnaam."),
+        schip: z
+          .object({
+            diepgangCm: z.number().int().positive().optional().describe("Diepgang in centimeters."),
+            hoogteCm: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe("Doorvaarthoogte / hoogte boven water in centimeters."),
+            breedteCm: z.number().int().positive().optional().describe("Breedte in centimeters."),
+            lengteCm: z.number().int().positive().optional().describe("Lengte in centimeters."),
+          })
+          .optional()
+          .describe(
+            "Scheepsafmetingen in cm. Vraag deze aan de schipper; zonder diepgang/hoogte is de passeerbaarheidscheck onvolledig.",
+          ),
+      },
+    },
+    async ({ van, naar, schip }) => {
+      const result = await getVoyage(van, naar, schip);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         isError: result.data === undefined,
