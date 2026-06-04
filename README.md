@@ -9,11 +9,11 @@ It runs two ways: as a **hosted URL** you add to your chat tool (nothing to inst
 ## Why this exists
 
 As a captain I want ChatGPT to answer the typical questions you have when sailing, like: 
-I heard lock Evergem is partly closed, is this true?
-Are there any other issues on my route to Duinkerke?
-When is it high tide in Dordrecht?
-How long is a trip from Duinkerke to Lockem?
-What is the minimal draft on the Ijssel?
+- I heard lock Evergem is partly closed, is this true?
+- Are there any other issues on my route to Duinkerke?
+- When is it high tide in Dordrecht?
+- How long is a trip from Duinkerke to Lochem?
+- What is the minimal draft on the Ijssel?
 
 To answer these questions correctly the LLM needs the correct data, which it gets from [EuRIS](https://www.eurisportal.eu) via this MCP.
 
