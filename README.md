@@ -8,9 +8,14 @@ It runs two ways: as a **hosted URL** you add to your chat tool (nothing to inst
 
 ## Why this exists
 
-I'm a licensed inland-shipping captain. I built a WhatsApp assistant that put official shipping data in front of skippers where they already talk. WhatsApp shut it down for using an automated account, and the appeal was denied.
+As a captain I want ChatGPT to answer the typical questions you have when sailing, like: 
+I heard lock Evergem is partly closed, is this true?
+Are there any other issues on my route to Duinkerke?
+When is it high tide in Dordrecht?
+How long is a trip from Duinkerke to Lockem?
+What is the minimal draft on the Ijssel?
 
-So instead of one closed channel, I rebuilt it as open infrastructure: a small, public MCP server that puts the same official EuRIS data into _any_ chat tool — keyless, MIT-licensed, every layer readable. A ban on one app became a reason to make the data available everywhere.
+To answer these questions correctly the LLM needs the correct data, which it gets from [EuRIS](https://www.eurisportal.eu) via this MCP.
 
 ## What it does
 
