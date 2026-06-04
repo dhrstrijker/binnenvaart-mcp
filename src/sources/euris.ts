@@ -58,16 +58,39 @@ export async function getWaterLevel(query: string): Promise<SourceResult<WaterLe
   }
 
   const best = pickBest(candidates, q);
-  const datagaten: Datagat[] =
-    best.status === "stale"
-      ? [
-          {
-            code: "euris-waterstand-stale",
-            message: `De waterstand voor ${best.locationName} lijkt verouderd.`,
-            severity: "caution",
-          },
-        ]
-      : [];
+
+  // A value is only as trustworthy as its load-bearing qualifiers: freshness,
+  // datum and unit. When one is missing it must travel as an explicit datagat,
+  // never be dropped silently (ADR-0004). These rarely fire — EuRIS supplies
+  // them today — but the honesty contract has to hold if upstream degrades.
+  const datagaten: Datagat[] = [];
+  if (best.status === "stale") {
+    datagaten.push({
+      code: "euris-waterstand-stale",
+      message: `De waterstand voor ${best.locationName} lijkt verouderd.`,
+      severity: "caution",
+    });
+  } else if (best.status === "unknown") {
+    datagaten.push({
+      code: "euris-waterstand-age-unknown",
+      message: `De ouderdom van de waterstand voor ${best.locationName} is onbekend (geen tijdstempel).`,
+      severity: "caution",
+    });
+  }
+  if (!best.referenceLevel) {
+    datagaten.push({
+      code: "euris-waterstand-no-reference-level",
+      message: `Geen referentievlak (NAP/TAW/…) bij de waterstand voor ${best.locationName}; de waarde is niet eenduidig te interpreteren.`,
+      severity: "caution",
+    });
+  }
+  if (!best.unit) {
+    datagaten.push({
+      code: "euris-waterstand-no-unit",
+      message: `Geen eenheid bij de waterstand voor ${best.locationName}; onduidelijk of de waarde in cm of m is.`,
+      severity: "caution",
+    });
+  }
 
   return {
     data: best,
@@ -716,17 +739,20 @@ function toWaterLevel(record: Record<string, unknown>): WaterLevel | undefined {
   };
 }
 
-/** Prefer an exact/prefix name match with a fresh, measured value. */
+/** Pick the closest name match. Freshness only breaks ties *within* a name
+ *  tier — it can never cross one (max +4 << the 90-point inter-tier gap), so an
+ *  exact-but-stale gauge (returned with its stale datagat) always wins over
+ *  silently swapping to a fresher neighbouring gauge. */
 function pickBest(candidates: WaterLevel[], query: string): WaterLevel {
   const q = query.toLowerCase();
   const score = (c: WaterLevel): number => {
     const name = c.locationName.toLowerCase();
     let s = 0;
-    if (name === q) s += 100;
-    else if (name.startsWith(q)) s += 70;
-    else if (name.includes(q)) s += 40;
-    if (c.status === "measured") s += 30;
-    if (c.measuredAt) s += 5;
+    if (name === q) s += 1000;
+    else if (name.startsWith(q)) s += 100;
+    else if (name.includes(q)) s += 10;
+    if (c.status === "measured") s += 3;
+    if (c.measuredAt) s += 1;
     return s;
   };
   return [...candidates].sort((a, b) => score(b) - score(a))[0]!;
