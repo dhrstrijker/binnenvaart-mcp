@@ -1,0 +1,18 @@
+{
+  "type": "Lock",
+  "objectId": 5841,
+  "isrs": "NLAMR001030949000542",
+  "name": "Sluis Amerongen",
+  "nameFormatted": "Sluis Amerongen",
+  "location": "5.409113,51.976455",
+  "status": "EXITING_DOWNSTREAM",
+  "sailingDirection": "UNKNOWN",
+  "lastModification": "2026-06-05T19:27:30.350039+00:00",
+  "lastRead": null,
+  "statusFormatted": "Exiting downstream",
+  "sailingDirectionFormatted": "Unknown",
+  "fairway": "Voorhavens Sluiscomplex Amerongen, Neder-Rijn",
+  "countryCode": "NL",
+  "hectometer": "00542",
+  "countryFormatted": "Netherlands"
+}

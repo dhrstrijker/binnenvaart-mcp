@@ -1,6 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getNotices, getVoyage, getWaterLevel, searchObjects } from "../sources/euris.js";
+import {
+  getNotices,
+  getObjectStatus,
+  getOperationTimes,
+  getVoyage,
+  getWaterInfo,
+  getWaterLevel,
+  searchObjects,
+} from "../sources/euris.js";
 import { guarded } from "./result.js";
 
 /**
@@ -42,6 +50,82 @@ export function registerTools(server: McpServer): void {
       },
     },
     async ({ locatie }) => guarded("euris-waterstand-unexpected", () => getWaterLevel(locatie)),
+  );
+
+  // M4 — any Hydrometeo grootheid from the same endpoint as `waterstand`: depth
+  // (LSD / minst gepeilde diepte), clearance (VER / doorvaarthoogte) or discharge
+  // (DIS / afvoer). Water level is also available here for completeness.
+  server.registerTool(
+    "euris_waterinfo",
+    {
+      title: "Waterinfo: diepte, doorvaarthoogte, afvoer (EuRIS)",
+      description: [
+        "Haal een hydrometeo-grootheid op voor een plaats, meetlocatie of vaarweg uit EuRIS: waterstand (WAL), minst gepeilde diepte (LSD), doorvaarthoogte (VER) of afvoer (DIS).",
+        "Kies de grootheid expliciet. Werkt corridorbreed (NL, BE, Duitse Rijn, Frankrijk, Donau). Voor alleen de waterstand kun je ook de tool 'waterstand' gebruiken.",
+        "Noem altijd het referentievlak en de eenheid bij de waarde; ontbreken die, dan staat dat als datagat vermeld — een waarde zonder referentievlak of eenheid is niet eenduidig te interpreteren.",
+        "Geef geen bindend vaaradvies; dit is brondata, de schipper en officiële bronnen beslissen.",
+      ].join(" "),
+      inputSchema: {
+        locatie: z
+          .string()
+          .describe("Plaats, meetlocatie of vaarweg, bijvoorbeeld 'Kaub', 'IJssel' of 'Vlissingen'."),
+        grootheid: z
+          .enum(["waterstand", "diepte", "doorvaarthoogte", "afvoer"])
+          .describe(
+            "Welke grootheid: waterstand (WAL), diepte (minst gepeilde diepte, LSD), doorvaarthoogte (VER) of afvoer (DIS).",
+          ),
+      },
+    },
+    async ({ locatie, grootheid }) =>
+      guarded("euris-waterinfo-unexpected", () => getWaterInfo(locatie, grootheid)),
+  );
+
+  // M4 — live operational status of a single lock or bridge (ObjectStatus_v3).
+  // Resolves a name to ISRS, picks the lock/bridge endpoint by type, and flags a
+  // status whose timestamp is stale. Only telemetered objects report a status.
+  server.registerTool(
+    "euris_objectstatus",
+    {
+      title: "Status sluis/brug (EuRIS)",
+      description: [
+        "Haal de actuele operationele status van een sluis of brug op uit EuRIS (bijvoorbeeld 'open', 'gesloten', 'schutten' of 'buiten bedrijf').",
+        "Geef een ISRS-code (bepaal die met euris_zoek) of een naam; bij meerdere mogelijke objecten krijg je kandidaten terug om uit te kiezen.",
+        "Alleen sluizen en bruggen met telemetrie leveren een status; voor andere objecten krijg je een datagat. Een live status met een oude tijdstempel wordt als verouderd gemarkeerd.",
+        "Geef geen bindend vaaradvies; dit is brondata, de schipper en officiële bronnen beslissen.",
+      ].join(" "),
+      inputSchema: {
+        object: z
+          .string()
+          .describe(
+            "Naam of ISRS-code van een sluis of brug, bijvoorbeeld 'Sluis Amerongen' of 'NLAMR001030949000542'.",
+          ),
+      },
+    },
+    async ({ object }) => guarded("euris-objectstatus-unexpected", () => getObjectStatus(object)),
+  );
+
+  // M4 — operation/service times of a lock or bridge (OperationTimes_v3). The
+  // endpoint needs a date window; without a date we default to the coming week.
+  server.registerTool(
+    "euris_bedieningstijden",
+    {
+      title: "Bedieningstijden sluis/brug (EuRIS)",
+      description: [
+        "Haal de bedieningstijden (operation times) van een sluis of brug op uit EuRIS: wanneer wordt er wel en niet bediend.",
+        "Geef een ISRS-code (via euris_zoek) of een naam; bij meerdere mogelijke objecten krijg je kandidaten terug.",
+        "Zonder datum toont de tool de komende zeven dagen; geef een datum (JJJJ-MM-DD) voor één specifieke dag.",
+        "Geef geen bindend vaaradvies; dit is brondata, de schipper en officiële bronnen beslissen.",
+      ].join(" "),
+      inputSchema: {
+        object: z.string().describe("Naam of ISRS-code van een sluis of brug."),
+        datum: z
+          .string()
+          .optional()
+          .describe("Optionele datum in het formaat JJJJ-MM-DD; standaard de komende zeven dagen."),
+      },
+    },
+    async ({ object, datum }) =>
+      guarded("euris-bedieningstijden-unexpected", () => getOperationTimes(object, datum)),
   );
 
   // M3 — resolve a place/object name to ISRS candidates from the EuRIS RIS index.

@@ -22,6 +22,9 @@ To answer these questions correctly the LLM needs the correct data, which it get
 | Tool | Returns |
 | --- | --- |
 | `waterstand` | Current water level for a place or fairway (EuRIS Hydrometeo `WAL`), always named against its reference datum (NAP / TAW / ZPG). |
+| `euris_waterinfo` | Any Hydrometeo grootheid for a place or fairway — water level (`WAL`), least sounded depth (`LSD` / minst gepeilde diepte), vertical clearance (`VER` / doorvaarthoogte) or discharge (`DIS` / afvoer) — with its unit and reference datum (or an honest gap when missing). |
+| `euris_objectstatus` | Live operational status of a lock or bridge (open / closed / locking / out of service), with the timestamp it was last read — and a gap when the object has no telemetry or the reading is stale. |
+| `euris_bedieningstijden` | Operating / service times of a lock or bridge for a day or the coming week (when it is and isn't operated). |
 | `euris_zoek` | Resolves a place or object name to ISRS codes — locks, bridges, berths, reporting points — so the model can pin an exact start/end and ask which one you mean. |
 | `euris_route` | A voyage between two points for your ship's dimensions: distance, sailing time, the locks and bridges en route, tide-dependence, and fastest/shortest alternatives — honouring operating hours, tides and active notices. |
 | `euris_berichten` | Current Notices to Skippers (closures, cautions, works) for a fairway and/or country. |

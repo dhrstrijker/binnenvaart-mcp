@@ -1,0 +1,26 @@
+[
+  {
+    "id": 0,
+    "operationScheduleId": null,
+    "dateStart": "2026-06-05T23:59:00+02:00",
+    "dateEnd": "2026-06-06T00:00:00+02:00",
+    "isNts": false,
+    "status": 0,
+    "operationEventRemarks": [],
+    "operationMode": 0,
+    "statusFormatted": "No operation",
+    "operationModeFormatted": "No service"
+  },
+  {
+    "id": 0,
+    "operationScheduleId": null,
+    "dateStart": "2026-06-06T00:00:00+02:00",
+    "dateEnd": "2026-06-06T23:59:00+02:00",
+    "isNts": false,
+    "status": 3,
+    "operationEventRemarks": [{ "id": 2164050373, "remark": "", "language": null }],
+    "operationMode": 1,
+    "statusFormatted": "Full operation",
+    "operationModeFormatted": "Normal operation"
+  }
+]

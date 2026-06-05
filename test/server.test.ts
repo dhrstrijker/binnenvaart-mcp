@@ -5,7 +5,7 @@ import { createServer } from "../src/server.js";
 import { guarded, toToolResult } from "../src/tools/result.js";
 
 describe("server", () => {
-  it("registers all five tools and lists them over MCP", async () => {
+  it("registers all eight tools and lists them over MCP", async () => {
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: "test", version: "0.0.0" }, { capabilities: {} });
@@ -14,8 +14,11 @@ describe("server", () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       "echo",
+      "euris_bedieningstijden",
       "euris_berichten",
+      "euris_objectstatus",
       "euris_route",
+      "euris_waterinfo",
       "euris_zoek",
       "waterstand",
     ]);

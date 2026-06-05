@@ -1,0 +1,21 @@
+{
+  "items": [
+    {
+      "id": "16e560dc-9188-4803-a6f9-0f4db5ea73a1",
+      "name": "Least sounded depth @ Zwolle-IJsselkanaal - Ketelmeer",
+      "locationName": "Zwolle-IJsselkanaal - Ketelmeer",
+      "fairwayName": "Geldersche IJssel",
+      "countryCode": "NL",
+      "definedParameterCode": "LSD",
+      "definedParameterName": "Least Sounded Depth",
+      "parameterCode": "LSD",
+      "value": 290.0,
+      "unit": null,
+      "referenceLevel": null,
+      "measuredAt": "2026-06-05T06:00:00+00:00",
+      "dataStatus": 0,
+      "dataUnit": "cm",
+      "dataReferenceLevel": null
+    }
+  ]
+}

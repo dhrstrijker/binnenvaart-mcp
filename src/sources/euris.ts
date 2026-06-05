@@ -1,4 +1,4 @@
-import { getJson, postJson } from "../http/jsonHttp.js";
+import { getJson, HttpError, postJson } from "../http/jsonHttp.js";
 import type { DataStatus, Datagat, SourceResult } from "./types.js";
 
 // EuRIS open data needs no key. The base URL and an OPTIONAL token are env-driven
@@ -19,24 +19,48 @@ export interface WaterLevel {
   status: DataStatus;
 }
 
+// A Hydrometeo grootheid: the EuRIS parameter code + how we label it to the
+// skipper. WAL (water level), LSD (least sounded depth / minst gepeilde diepte),
+// VER (vertical clearance / doorvaarthoogte) and DIS (discharge / afvoer) all
+// share the same /api/v3/timeseries endpoint, response shape and honesty rules
+// — only the definedParameterCode (and the label) differs.
+type Grootheid = "WAL" | "LSD" | "VER" | "DIS";
+
+interface HydroConfig {
+  code: Grootheid;
+  prefix: string; // datagat-code prefix, e.g. "euris-waterstand"
+  label: string; // human label, e.g. "Waterstand"
+}
+
+/** Dutch grootheid name (the tool's enum) → Hydrometeo config. */
+const GROOTHEDEN = {
+  waterstand: { code: "WAL", prefix: "euris-waterinfo-waterstand", label: "Waterstand" },
+  diepte: { code: "LSD", prefix: "euris-waterinfo-diepte", label: "Minst gepeilde diepte" },
+  doorvaarthoogte: { code: "VER", prefix: "euris-waterinfo-doorvaarthoogte", label: "Doorvaarthoogte" },
+  afvoer: { code: "DIS", prefix: "euris-waterinfo-afvoer", label: "Afvoer" },
+} satisfies Record<string, HydroConfig>;
+
+export type GrootheidNaam = keyof typeof GROOTHEDEN;
+
 /**
- * Current water level (EuRIS Hydrometeo parameter WAL) for a place or fairway.
+ * One Hydrometeo grootheid for a place or fairway.
  *
  * We query /api/v3/timeseries with an OData $filter for series whose
- * locationName or fairwayName contains the query AND whose parameter is WAL.
+ * locationName or fairwayName contains the query AND whose parameter matches.
  * Each series record already carries its latest value inline, so a single GET
  * is enough — no separate "latest measurement" call.
  */
-export async function getWaterLevel(query: string): Promise<SourceResult<WaterLevel>> {
+async function getHydrometeo(query: string, cfg: HydroConfig): Promise<SourceResult<WaterLevel>> {
   const q = query.trim();
   if (!q) {
-    return gap("euris-waterstand-query-missing", "Geen locatie of vaarweg opgegeven.", "blocking");
+    return gap(`${cfg.prefix}-query-missing`, "Geen locatie of vaarweg opgegeven.", "blocking");
   }
+  const labelLower = cfg.label.toLowerCase();
 
   const safe = q.toLowerCase().replaceAll("'", "''"); // OData escapes a quote by doubling it
   const filter =
     `(contains(tolower(locationName),'${safe}') or contains(tolower(fairwayName),'${safe}'))` +
-    ` and definedParameterCode eq 'WAL'`;
+    ` and definedParameterCode eq '${cfg.code}'`;
   const url = `${BASE_URL}/api/v3/timeseries?$filter=${encodeURIComponent(filter)}&$top=10`;
 
   let page: unknown;
@@ -44,50 +68,54 @@ export async function getWaterLevel(query: string): Promise<SourceResult<WaterLe
     page = await getJson<unknown>(url, { token: TOKEN });
   } catch (error) {
     return gap(
-      "euris-waterstand-api-failed",
-      `EuRIS kon niet worden bereikt voor "${q}": ${error instanceof Error ? error.message : String(error)}`,
+      `${cfg.prefix}-api-failed`,
+      `EuRIS kon niet worden bereikt voor "${q}": ${errMsg(error)}`,
       "blocking",
     );
   }
 
   const candidates = recordsFromPage(page)
-    .map(toWaterLevel)
+    .map((record) => toWaterLevel(record, cfg.code))
     .filter((c): c is WaterLevel => c !== undefined);
   if (!candidates.length) {
-    return gap("euris-waterstand-no-candidates", `EuRIS vond geen WAL-meetreeks voor "${q}".`, "caution");
+    return gap(
+      `${cfg.prefix}-no-candidates`,
+      `EuRIS vond geen ${labelLower}-meetreeks voor "${q}".`,
+      "caution",
+    );
   }
 
   const best = pickBest(candidates, q);
 
   // A value is only as trustworthy as its load-bearing qualifiers: freshness,
   // datum and unit. When one is missing it must travel as an explicit datagat,
-  // never be dropped silently (ADR-0004). These rarely fire — EuRIS supplies
-  // them today — but the honesty contract has to hold if upstream degrades.
+  // never be dropped silently (ADR-0004). For LSD/VER especially, a value
+  // without its reference datum is genuinely uninterpretable.
   const datagaten: Datagat[] = [];
   if (best.status === "stale") {
     datagaten.push({
-      code: "euris-waterstand-stale",
-      message: `De waterstand voor ${best.locationName} lijkt verouderd.`,
+      code: `${cfg.prefix}-stale`,
+      message: `De ${labelLower} voor ${best.locationName} lijkt verouderd.`,
       severity: "caution",
     });
   } else if (best.status === "unknown") {
     datagaten.push({
-      code: "euris-waterstand-age-unknown",
-      message: `De ouderdom van de waterstand voor ${best.locationName} is onbekend (geen tijdstempel).`,
+      code: `${cfg.prefix}-age-unknown`,
+      message: `De ouderdom van de ${labelLower} voor ${best.locationName} is onbekend (geen tijdstempel).`,
       severity: "caution",
     });
   }
   if (!best.referenceLevel) {
     datagaten.push({
-      code: "euris-waterstand-no-reference-level",
-      message: `Geen referentievlak (NAP/TAW/…) bij de waterstand voor ${best.locationName}; de waarde is niet eenduidig te interpreteren.`,
+      code: `${cfg.prefix}-no-reference-level`,
+      message: `Geen referentievlak (NAP/TAW/…) bij de ${labelLower} voor ${best.locationName}; de waarde is niet eenduidig te interpreteren.`,
       severity: "caution",
     });
   }
   if (!best.unit) {
     datagaten.push({
-      code: "euris-waterstand-no-unit",
-      message: `Geen eenheid bij de waterstand voor ${best.locationName}; onduidelijk of de waarde in cm of m is.`,
+      code: `${cfg.prefix}-no-unit`,
+      message: `Geen eenheid bij de ${labelLower} voor ${best.locationName}; onduidelijk of de waarde in cm of m is.`,
       severity: "caution",
     });
   }
@@ -97,15 +125,32 @@ export async function getWaterLevel(query: string): Promise<SourceResult<WaterLe
     bronregels: [
       {
         source: "EuRIS",
-        subject: `Waterstand ${best.locationName}`,
+        subject: `${cfg.label} ${best.locationName}`,
         value:
           `${best.value} ${best.unit}`.trim() + (best.referenceLevel ? ` t.o.v. ${best.referenceLevel}` : ""),
         observedAt: best.measuredAt,
-        note: "EuRIS Hydrometeo_v3 (WAL)",
+        note: `EuRIS Hydrometeo_v3 (${cfg.code})`,
       },
     ],
     datagaten,
   };
+}
+
+/**
+ * Current water level (Hydrometeo WAL) — the dominant query. Kept under its own
+ * tool name and its original `euris-waterstand-*` datagat codes; delegates to the
+ * shared Hydrometeo path.
+ */
+export async function getWaterLevel(query: string): Promise<SourceResult<WaterLevel>> {
+  return getHydrometeo(query, { code: "WAL", prefix: "euris-waterstand", label: "Waterstand" });
+}
+
+/** Any Hydrometeo grootheid by its Dutch name (waterstand/diepte/doorvaarthoogte/afvoer). */
+export async function getWaterInfo(
+  query: string,
+  grootheid: GrootheidNaam,
+): Promise<SourceResult<WaterLevel>> {
+  return getHydrometeo(query, GROOTHEDEN[grootheid]);
 }
 
 // === Object search (RIS Index) =============================================
@@ -354,19 +399,28 @@ interface EventRecord {
   ISRS?: string | null;
 }
 
-/** Turn a free-text name into an ISRS: trust a bare ISRS, else search; an
- *  ambiguous or missing name yields a datagat (with candidates) so the model
- *  can ask a follow-up question instead of the tool guessing. */
-async function resolveEndpoint(
-  input: string,
-  role: "start" | "eind",
-): Promise<{ isrs?: string; naam?: string; datagat?: Datagat }> {
+export interface IsrsResolution {
+  isrs?: string;
+  naam?: string;
+  type?: string; // the matched ObjectCandidate.type, e.g. "Lock"/"Bridge"
+  candidates?: ObjectCandidate[]; // present on the ambiguous (>1) path
+  datagat?: Datagat;
+}
+
+/**
+ * Turn a free-text name into an ISRS code: trust a bare ISRS, else search the
+ * RIS index. A blank input is blocking; 0 hits → not-found; >1 → ambiguous, with
+ * the candidates handed back so the model can ask which (it never guesses). This
+ * is the single name→ISRS resolver shared by every name-keyed tool — pass a
+ * `codePrefix` (e.g. "euris-objectstatus") to namespace the datagaten.
+ */
+export async function resolveToIsrs(input: string, codePrefix: string): Promise<IsrsResolution> {
   const value = input.trim();
   if (!value) {
     return {
       datagat: {
-        code: `euris-route-${role}-missing`,
-        message: `Geen ${role}punt opgegeven.`,
+        code: `${codePrefix}-query-missing`,
+        message: "Geen object opgegeven.",
         severity: "blocking",
       },
     };
@@ -376,29 +430,47 @@ async function resolveEndpoint(
   }
   const found = await searchObjects(value);
   const candidates = found.data ?? [];
-  if (candidates.length === 1) {
-    return { isrs: candidates[0]!.isrs, naam: candidates[0]!.naam };
-  }
   if (candidates.length === 0) {
     return {
       datagat: {
-        code: `euris-route-${role}-not-found`,
-        message: `Geen vaarwegobject gevonden voor ${role}punt "${value}". Zoek het exacte punt met euris_zoek.`,
+        code: `${codePrefix}-not-found`,
+        message: `Geen vaarwegobject gevonden voor "${value}". Zoek het exacte object met euris_zoek.`,
         severity: "caution",
       },
     };
+  }
+  if (candidates.length === 1) {
+    return { isrs: candidates[0]!.isrs, naam: candidates[0]!.naam, type: candidates[0]!.type };
+  }
+  // More than one hit, but a search for an exact object often also returns its
+  // sub-parts (lock basins, waiting berths). If exactly one candidate matches the
+  // query name exactly (case-insensitive), trust it instead of bailing.
+  const exact = candidates.filter((c) => c.naam.trim().toLowerCase() === value.toLowerCase());
+  if (exact.length === 1) {
+    return { isrs: exact[0]!.isrs, naam: exact[0]!.naam, type: exact[0]!.type };
   }
   const list = candidates
     .slice(0, 6)
     .map((c) => `${c.naam} (${c.type}${c.vaarweg ? `, ${c.vaarweg}` : ""}) — ${c.isrs}`)
     .join("; ");
   return {
+    candidates,
     datagat: {
-      code: `euris-route-${role}-ambiguous`,
-      message: `Meerdere mogelijke ${role}punten voor "${value}". Vraag de schipper welke en herhaal euris_route met de ISRS-code. Kandidaten: ${list}`,
+      code: `${codePrefix}-ambiguous`,
+      message: `Meerdere mogelijke objecten voor "${value}". Kies er één en herhaal met de ISRS-code. Kandidaten: ${list}`,
       severity: "caution",
     },
   };
+}
+
+/** Resolve a route start/end point — delegates to the shared resolver, keeping
+ *  the route's `euris-route-<role>-*` datagat codes. */
+async function resolveEndpoint(
+  input: string,
+  role: "start" | "eind",
+): Promise<{ isrs?: string; naam?: string; datagat?: Datagat }> {
+  const r = await resolveToIsrs(input, `euris-route-${role}`);
+  return { isrs: r.isrs, naam: r.naam, datagat: r.datagat };
 }
 
 function toVariant(itin: Itinerary): RouteVariant {
@@ -730,16 +802,265 @@ function odataLiteral(value: string): string {
   return value.replace(/'/g, "''");
 }
 
+// === Object status (ObjectStatus_v3) =======================================
+// Live operational status of a lock or bridge. Only objects with telemetry
+// appear in the feed; a name/ISRS that isn't instrumented yields 404 → an honest
+// "no live status" datagat rather than an error. A "live" status carries a
+// lastRead/lastModification timestamp; if it is old we flag it — a stale "live"
+// status is a trap (ADR-0004).
+
+export interface ObjectStatus {
+  isrs: string;
+  naam: string;
+  type: string; // "sluis" | "brug" | raw
+  status?: string; // statusFormatted, e.g. "Exiting downstream"
+  vaarrichting?: string; // sailingDirectionFormatted
+  vaarweg?: string;
+  land?: string;
+  laatstGelezen?: string;
+  laatstGewijzigd?: string;
+  freshness: DataStatus;
+}
+
+const STATUS_STALE_MS = 15 * 60 * 1000; // a "live" status older than 15 min is stale
+
+export async function getObjectStatus(object: string): Promise<SourceResult<ObjectStatus>> {
+  const resolved = await resolveToIsrs(object, "euris-objectstatus");
+  if (resolved.datagat) return { bronregels: [], datagaten: [resolved.datagat] };
+  const isrs = resolved.isrs!;
+
+  // Choose the endpoint by the resolved object type; on a 404 fall back to the
+  // other (a bare ISRS has no type, so we just try lock then bridge).
+  const t = (resolved.type ?? "").toLowerCase();
+  const order: ("locks" | "bridges")[] =
+    t.includes("bridge") || t.includes("brug") ? ["bridges", "locks"] : ["locks", "bridges"];
+
+  let raw: Record<string, unknown> | undefined;
+  for (const kind of order) {
+    try {
+      const r = await getJson<unknown>(`${BASE_URL}/api/v3/${kind}/${encodeURIComponent(isrs)}/status`, {
+        token: TOKEN,
+      });
+      if (isRecord(r)) {
+        raw = r;
+        break;
+      }
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404) continue;
+      return gap(
+        "euris-objectstatus-api-failed",
+        `EuRIS-status kon niet worden opgehaald: ${errMsg(error)}`,
+        "blocking",
+      );
+    }
+  }
+  if (!raw) {
+    return gap(
+      "euris-objectstatus-not-status-object",
+      `Geen live status beschikbaar voor "${resolved.naam ?? isrs}". Alleen sluizen en bruggen met telemetrie leveren een status.`,
+      "caution",
+    );
+  }
+
+  const laatstGelezen = str(raw, "lastRead") || undefined;
+  const laatstGewijzigd = str(raw, "lastModification") || undefined;
+  const ts = laatstGelezen ?? laatstGewijzigd;
+  const tsMs = ts ? Date.parse(ts) : NaN;
+  const freshness: DataStatus =
+    !ts || Number.isNaN(tsMs) ? "unknown" : Date.now() - tsMs > STATUS_STALE_MS ? "stale" : "measured";
+
+  const status = str(raw, "statusFormatted") || str(raw, "status") || undefined;
+  const vaarrichting = str(raw, "sailingDirectionFormatted") || undefined;
+  const data: ObjectStatus = {
+    isrs: str(raw, "isrs") || isrs,
+    naam: str(raw, "nameFormatted", "name") || resolved.naam || isrs,
+    type: objectTypeLabel(str(raw, "type")),
+    status,
+    vaarrichting,
+    vaarweg: str(raw, "fairway") || undefined,
+    land: str(raw, "countryCode") || undefined,
+    laatstGelezen,
+    laatstGewijzigd,
+    freshness,
+  };
+
+  const datagaten: Datagat[] = [];
+  if (freshness === "stale") {
+    datagaten.push({
+      code: "euris-objectstatus-stale",
+      message: `De status van ${data.naam} lijkt verouderd (laatst bijgewerkt ${ts}).`,
+      severity: "caution",
+    });
+  } else if (freshness === "unknown") {
+    datagaten.push({
+      code: "euris-objectstatus-age-unknown",
+      message: `De ouderdom van de status van ${data.naam} is onbekend (geen tijdstempel).`,
+      severity: "caution",
+    });
+  }
+  if (!status) {
+    datagaten.push({
+      code: "euris-objectstatus-no-status",
+      message: `Geen statuswaarde gevonden voor ${data.naam}.`,
+      severity: "caution",
+    });
+  }
+
+  return {
+    data,
+    bronregels: [
+      {
+        source: "EuRIS",
+        subject: `Status ${data.naam}`,
+        value:
+          (status ?? "onbekend") +
+          (vaarrichting && vaarrichting.toLowerCase() !== "unknown" ? ` (${vaarrichting})` : ""),
+        observedAt: ts,
+        note: "EuRIS ObjectStatus_v3",
+      },
+    ],
+    datagaten,
+  };
+}
+
+/** EuRIS object `type` ("Lock"/"Bridge") → the Dutch term; pass through anything else. */
+function objectTypeLabel(type: string): string {
+  const t = type.toLowerCase();
+  if (t.includes("lock")) return "sluis";
+  if (t.includes("bridge")) return "brug";
+  return type || "object";
+}
+
+// === Operation times (OperationTimes_v3) ===================================
+// When a lock or bridge is actually operated. The endpoint requires a date
+// window (it 404s without one), so we default to the coming week and say so via
+// an info datagat. Each event is a time block with a status (Full/No operation)
+// and a mode.
+
+export interface OperationEvent {
+  van?: string; // dateStart (ISO with offset)
+  tot?: string; // dateEnd
+  status?: string; // statusFormatted, e.g. "Full operation"
+  modus?: string; // operationModeFormatted, e.g. "Normal operation"
+  opmerkingen: string[];
+}
+
+export interface OperationTimes {
+  isrs: string;
+  naam?: string;
+  van: string; // queried window start (ISO)
+  tot: string; // queried window end (ISO)
+  perioden: OperationEvent[];
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+export async function getOperationTimes(
+  object: string,
+  datum?: string,
+): Promise<SourceResult<OperationTimes>> {
+  const resolved = await resolveToIsrs(object, "euris-bedieningstijden");
+  if (resolved.datagat) return { bronregels: [], datagaten: [resolved.datagat] };
+  const isrs = resolved.isrs!;
+
+  const datagaten: Datagat[] = [];
+  let van: string;
+  let tot: string;
+  const d = datum?.trim();
+  if (d) {
+    if (!DATE_ONLY.test(d)) {
+      return gap(
+        "euris-bedieningstijden-bad-date",
+        `Ongeldige datum "${datum}". Gebruik het formaat JJJJ-MM-DD.`,
+        "caution",
+      );
+    }
+    van = `${d}T00:00:00Z`;
+    tot = `${d}T23:59:59Z`;
+  } else {
+    const now = new Date();
+    van = now.toISOString();
+    tot = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    datagaten.push({
+      code: "euris-bedieningstijden-default-window",
+      message:
+        "Geen datum opgegeven; toont de komende zeven dagen. Geef een datum (JJJJ-MM-DD) voor één dag.",
+      severity: "info",
+    });
+  }
+
+  const url =
+    `${BASE_URL}/api/v3/operation-times/${encodeURIComponent(isrs)}` +
+    `?validFrom=${encodeURIComponent(van)}&validTo=${encodeURIComponent(tot)}`;
+
+  let page: unknown;
+  try {
+    page = await getJson<unknown>(url, { token: TOKEN });
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      datagaten.push({
+        code: "euris-bedieningstijden-none",
+        message: `Geen bedieningstijden bekend voor "${resolved.naam ?? isrs}".`,
+        severity: "caution",
+      });
+      return { bronregels: [], datagaten };
+    }
+    return gap(
+      "euris-bedieningstijden-api-failed",
+      `EuRIS-bedieningstijden konden niet worden opgehaald: ${errMsg(error)}`,
+      "blocking",
+    );
+  }
+
+  const perioden = recordsFromPage(page).map(toOperationEvent);
+  if (!perioden.length) {
+    datagaten.push({
+      code: "euris-bedieningstijden-none",
+      message: `Geen bedieningstijden gevonden voor "${resolved.naam ?? isrs}" in deze periode.`,
+      severity: "caution",
+    });
+    return { bronregels: [], datagaten };
+  }
+
+  return {
+    data: { isrs, naam: resolved.naam, van, tot, perioden },
+    bronregels: [
+      {
+        source: "EuRIS",
+        subject: `Bedieningstijden ${resolved.naam ?? isrs}`,
+        value: `${perioden.length} periode${perioden.length === 1 ? "" : "n"} (${dateOnly(van)} t/m ${dateOnly(tot)})`,
+        note: "EuRIS OperationTimes_v3",
+      },
+    ],
+    datagaten,
+  };
+}
+
+function toOperationEvent(record: Record<string, unknown>): OperationEvent {
+  const remarks = Array.isArray(record.operationEventRemarks)
+    ? (record.operationEventRemarks as unknown[])
+        .map((r) => (isRecord(r) ? str(r, "remark") : ""))
+        .filter((s) => s)
+    : [];
+  return {
+    van: str(record, "dateStart") || undefined,
+    tot: str(record, "dateEnd") || undefined,
+    status: str(record, "statusFormatted") || undefined,
+    modus: str(record, "operationModeFormatted") || undefined,
+    opmerkingen: remarks,
+  };
+}
+
 // --- helpers ---------------------------------------------------------------
 
-function toWaterLevel(record: Record<string, unknown>): WaterLevel | undefined {
+function toWaterLevel(record: Record<string, unknown>, expected: Grootheid): WaterLevel | undefined {
   const timeseriesId = str(record, "id", "Id", "ID");
   const locationName = str(record, "locationName", "LocationName");
   const parameterCode = str(record, "definedParameterCode", "DefinedParameterCode");
   const value = num(record, "value", "Value");
-  // Need an id, a name, the WAL parameter, and an actual current value to call
-  // this a "current water level". Anything missing → not a usable candidate.
-  if (!timeseriesId || !locationName || parameterCode !== "WAL" || value === undefined) {
+  // Need an id, a name, the expected parameter, and an actual current value to
+  // call this a usable reading. Anything missing → not a candidate.
+  if (!timeseriesId || !locationName || parameterCode !== expected || value === undefined) {
     return undefined;
   }
   const measuredAt = str(record, "measuredAt", "MeasuredAt") || undefined;
@@ -749,7 +1070,9 @@ function toWaterLevel(record: Record<string, unknown>): WaterLevel | undefined {
     locationName,
     fairwayName: str(record, "fairwayName", "FairwayName") || undefined,
     countryCode: str(record, "countryCode", "CountryCode") || undefined,
-    value,
+    // Round away float noise (EuRIS returns e.g. 1746.09997558594 cm); 2 decimals
+    // is precise enough for cm and for m readings alike.
+    value: Math.round(value * 100) / 100,
     // Per the EuRIS docs: prefer the general `unit` / `referenceLevel`, and only
     // fall back to the provider-specific `dataUnit` / `dataReferenceLevel`.
     unit: str(record, "unit", "Unit", "dataUnit", "DataUnit") || "",
@@ -814,4 +1137,9 @@ function num(record: Record<string, unknown>, ...keys: string[]): number | undef
 
 function gap<T>(code: string, message: string, severity: Datagat["severity"]): SourceResult<T> {
   return { bronregels: [], datagaten: [{ code, message, severity }] };
+}
+
+/** Best-effort message from an unknown thrown value. */
+function errMsg(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
