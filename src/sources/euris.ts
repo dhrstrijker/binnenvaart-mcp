@@ -1079,6 +1079,470 @@ function toOperationEvent(record: Record<string, unknown>): OperationEvent {
   };
 }
 
+// === Notices for one object (NtS_v3) =======================================
+// Notices to Skippers tied to a specific lock/bridge/object. Complements
+// euris_berichten (which filters by fairway/country): here we resolve a name to
+// ISRS and ask for everything anchored to that object, then keep only active
+// notices (dateEnd today or later, or open-ended).
+
+export async function getObjectNotices(object: string): Promise<SourceResult<Notice[]>> {
+  const resolved = await resolveToIsrs(object, "euris-objectberichten");
+  if (resolved.datagat) return { bronregels: [], datagaten: [resolved.datagat] };
+  const isrs = resolved.isrs!;
+
+  let page: unknown;
+  try {
+    page = await getJson<unknown>(`${BASE_URL}/api/v3/nts/objects/${encodeURIComponent(isrs)}`, {
+      token: TOKEN,
+    });
+  } catch (error) {
+    return gap(
+      "euris-objectberichten-api-failed",
+      `EuRIS-objectberichten konden niet worden opgehaald: ${errMsg(error)}`,
+      "blocking",
+    );
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const notices = recordsFromPage(page)
+    .map(toNotice)
+    .filter((n): n is Notice => n !== undefined)
+    .filter((n) => !n.tot || n.tot >= today); // active or upcoming only
+
+  if (!notices.length) {
+    return {
+      bronregels: [],
+      datagaten: [
+        {
+          code: "euris-objectberichten-none",
+          message: `Geen actieve berichten voor "${resolved.naam ?? isrs}".`,
+          severity: "info",
+        },
+      ],
+    };
+  }
+
+  return {
+    data: notices,
+    bronregels: [
+      {
+        source: "EuRIS",
+        subject: `Berichten ${resolved.naam ?? isrs}`,
+        value: `${notices.length} actief bericht${notices.length === 1 ? "" : "en"}`,
+        note: "EuRIS NtS_v3 (object)",
+      },
+    ],
+    datagaten: [],
+  };
+}
+
+// === Route impact points & lines (RouteImpact_v3) ==========================
+// NtS impacts geo-anchored to an object (point) or a stretch (line), each with a
+// structured type and (sometimes) a value. Filtered server-side by fairway
+// and/or country, active only. At least one filter is required — corridor-wide
+// would be thousands of records.
+
+export interface RouteImpact {
+  titel: string;
+  soort?: string; // NtS impact type
+  waarde?: string; // valueFormatted (e.g. a depth/clearance limit)
+  vaarweg?: string;
+  land?: string;
+  isrs?: string; // for a point impact
+  isrsBegin?: string; // for a line impact
+  isrsEind?: string;
+  van?: string;
+  tot?: string;
+  vorm: "punt" | "lijn";
+}
+
+const ROUTE_IMPACT_MAX = 25;
+
+export async function getRouteImpact(opts: {
+  vaarweg?: string;
+  land?: string;
+}): Promise<SourceResult<RouteImpact[]>> {
+  const vaarweg = opts.vaarweg?.trim() || undefined;
+  const land =
+    opts.land
+      ?.trim()
+      .toUpperCase()
+      .replace(/[^A-Z]/g, "")
+      .slice(0, 2) || undefined;
+
+  if (!vaarweg && !land) {
+    return gap(
+      "euris-routeimpact-no-filter",
+      "Geef een vaarweg (bijv. 'Waal') en/of een landcode (NL/BE/DE/FR) op; corridorbreed zijn het er te veel.",
+      "caution",
+    );
+  }
+
+  const today = new Date().toISOString();
+  const clauses = [`(dateEnd ge ${today} or dateEnd eq null)`];
+  if (land) clauses.push(`countryCode eq '${land}'`);
+  if (vaarweg) clauses.push(`contains(tolower(waterwayName),'${vaarweg.toLowerCase().replace(/'/g, "''")}')`);
+  const filter = encodeURIComponent(clauses.join(" and "));
+
+  const fetchImpacts = async (kind: "points" | "lines", vorm: "punt" | "lijn"): Promise<RouteImpact[]> => {
+    const url = `${BASE_URL}/api/v3/route-impact/${kind}?$filter=${filter}&$top=${ROUTE_IMPACT_MAX}`;
+    const page = await getJson<unknown>(url, { token: TOKEN });
+    return recordsFromPage(page).map((r) => toRouteImpact(r, vorm));
+  };
+
+  let impacts: RouteImpact[];
+  try {
+    impacts = [...(await fetchImpacts("points", "punt")), ...(await fetchImpacts("lines", "lijn"))];
+  } catch (error) {
+    return gap(
+      "euris-routeimpact-api-failed",
+      `EuRIS route-impact kon niet worden opgehaald: ${errMsg(error)}`,
+      "blocking",
+    );
+  }
+
+  if (!impacts.length) {
+    return {
+      bronregels: [],
+      datagaten: [
+        {
+          code: "euris-routeimpact-none",
+          message: `Geen actieve route-impact gevonden${vaarweg ? ` voor ${vaarweg}` : ""}${land ? ` (${land})` : ""}.`,
+          severity: "info",
+        },
+      ],
+    };
+  }
+
+  return {
+    data: impacts,
+    bronregels: [
+      {
+        source: "EuRIS",
+        subject: `Route-impact${vaarweg ? ` — ${vaarweg}` : ""}${land ? ` (${land})` : ""}`,
+        value: `${impacts.length} impact${impacts.length === 1 ? "" : "s"} (punten + lijnen)`,
+        note: "EuRIS RouteImpact_v3",
+      },
+    ],
+    datagaten: [],
+  };
+}
+
+function toRouteImpact(record: Record<string, unknown>, vorm: "punt" | "lijn"): RouteImpact {
+  return {
+    titel: str(record, "title", "objectName") || "route-impact",
+    soort: str(record, "type") || undefined,
+    waarde: str(record, "valueFormatted") || undefined,
+    vaarweg: str(record, "waterwayName") || undefined,
+    land: str(record, "countryCode") || undefined,
+    isrs: str(record, "isrs") || undefined,
+    isrsBegin: str(record, "isrsStart") || undefined,
+    isrsEind: str(record, "isrsEnd") || undefined,
+    van: dateOnly(str(record, "dateStart")) || undefined,
+    tot: dateOnly(str(record, "dateEnd")) || undefined,
+    vorm,
+  };
+}
+
+// === Berths / mooring (Berth_v2) ===========================================
+// Search berths by name; the compact record already carries the waterway, bank
+// and an inline occupancy band, so a single GET is enough.
+
+export interface Berth {
+  isrs?: string; // locode (ISRS-format)
+  naam: string;
+  vaarweg?: string;
+  oever?: string; // bankMessage, e.g. "Left bank"
+  bezetting?: string; // occupancyMessage, e.g. "1 - 40% occupation"
+  categorie?: string; // berthCategoryMessages
+  adnModus?: string; // adnModeMessage (dangerous-goods regime)
+  reserveerbaar?: string;
+}
+
+export async function getBerths(query: string): Promise<SourceResult<Berth[]>> {
+  const q = query.trim();
+  if (!q) {
+    return gap("euris-ligplaatsen-query-missing", "Geen zoekterm opgegeven.", "blocking");
+  }
+  const url = `${BASE_URL}/visuris/api/Berths_v2/GetCompactBerths?$search=${encodeURIComponent(q)}&$top=8`;
+
+  let page: unknown;
+  try {
+    page = await getJson<unknown>(url, { token: TOKEN });
+  } catch (error) {
+    return gap(
+      "euris-ligplaatsen-api-failed",
+      `EuRIS-ligplaatsen konden niet worden opgehaald: ${errMsg(error)}`,
+      "blocking",
+    );
+  }
+
+  const berths = recordsFromPage(page)
+    .map(toBerth)
+    .filter((b): b is Berth => b !== undefined);
+  if (!berths.length) {
+    return gap("euris-ligplaatsen-no-candidates", `EuRIS vond geen ligplaatsen voor "${q}".`, "caution");
+  }
+
+  return {
+    data: berths,
+    bronregels: [
+      {
+        source: "EuRIS",
+        subject: `Ligplaatsen "${q}"`,
+        value: `${berths.length} ligplaats${berths.length === 1 ? "" : "en"}`,
+        note: "EuRIS Berth_v2",
+      },
+    ],
+    datagaten: [],
+  };
+}
+
+function toBerth(record: Record<string, unknown>): Berth | undefined {
+  const naam = str(record, "objectname", "nationalObjectname", "originalObjectname");
+  if (!naam) return undefined;
+  return {
+    isrs: str(record, "locode") || undefined,
+    naam,
+    vaarweg: str(record, "waterwayName") || undefined,
+    oever: str(record, "bankMessage") || undefined,
+    bezetting: str(record, "occupancyMessage") || undefined,
+    categorie: str(record, "berthCategoryMessages") || undefined,
+    adnModus: str(record, "adnModeMessage") || undefined,
+    reserveerbaar: str(record, "reservableMessage") || undefined,
+  };
+}
+
+// === Bridge clearance (Bridge_v1) ==========================================
+// Static dimensions of a bridge — clearance width and registered height with its
+// datum. Resolved via the BridgeArea catalogue (GetBridge is keyed by the bridge
+// AREA ISRS). For LIVE vertical clearance use euris_waterinfo (VER); for open/
+// closed use euris_objectstatus.
+
+export interface BridgeInfo {
+  isrs: string;
+  naam: string;
+  vaarweg?: string;
+  doorvaartbreedteCm?: number;
+  doorvaarthoogteCm?: number;
+  referentievlak?: string;
+}
+
+export async function getBridge(object: string): Promise<SourceResult<BridgeInfo>> {
+  const resolved = await resolveBridgeArea(object);
+  if (resolved.datagat) return { bronregels: [], datagaten: [resolved.datagat] };
+  const isrs = resolved.isrs!;
+
+  let raw: unknown;
+  try {
+    raw = await getJson<unknown>(
+      `${BASE_URL}/visuris/api/Bridges/GetBridge?isrs=${encodeURIComponent(isrs)}`,
+      {
+        token: TOKEN,
+      },
+    );
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      return gap(
+        "euris-brug-not-a-bridge",
+        `Geen brugdetails voor "${resolved.naam ?? isrs}"; mogelijk geen brug.`,
+        "caution",
+      );
+    }
+    return gap(
+      "euris-brug-api-failed",
+      `EuRIS-brugdetails konden niet worden opgehaald: ${errMsg(error)}`,
+      "blocking",
+    );
+  }
+
+  const feature = isRecord(raw) && isRecord(raw.feature) ? raw.feature : isRecord(raw) ? raw : {};
+  const breedte = num(feature, "cL_WIDTH", "mwidthcm", "mwidcon");
+  const hoogte = [
+    num(feature, "mheightcmc"),
+    num(feature, "mheightcm"),
+    num(feature, "cL_HEIGHT"),
+    num(feature, "height"),
+  ].find((v) => v !== undefined && v > 0);
+  const referentievlak = str(feature, "heighT_REF") || undefined;
+
+  const data: BridgeInfo = {
+    isrs,
+    naam: str(feature, "objectname") || resolved.naam || isrs,
+    vaarweg: str(feature, "wW_NAME", "rT_NAME") || undefined,
+    doorvaartbreedteCm: breedte,
+    doorvaarthoogteCm: hoogte,
+    referentievlak: hoogte !== undefined ? referentievlak : undefined,
+  };
+
+  const datagaten: Datagat[] = [];
+  if (hoogte === undefined) {
+    datagaten.push({
+      code: "euris-brug-no-clearance",
+      message: `Geen geregistreerde doorvaarthoogte voor ${data.naam}. Voor een actuele hoogte: euris_waterinfo (doorvaarthoogte/VER); voor open/dicht: euris_objectstatus.`,
+      severity: "caution",
+    });
+  }
+
+  return {
+    data,
+    bronregels: [
+      {
+        source: "EuRIS",
+        subject: `Brug ${data.naam}`,
+        value:
+          [
+            breedte !== undefined ? `doorvaartbreedte ${breedte} cm` : undefined,
+            hoogte !== undefined
+              ? `doorvaarthoogte ${hoogte} cm${referentievlak ? ` t.o.v. ${referentievlak}` : ""}`
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join(", ") || "geen afmetingen bekend",
+        note: "EuRIS Bridge_v1",
+      },
+    ],
+    datagaten,
+  };
+}
+
+/** Resolve a name to a bridge-AREA ISRS via the BridgeArea catalogue (GetBridge
+ *  is keyed by the area, not the individual span). Mirrors resolveToIsrs. */
+async function resolveBridgeArea(
+  input: string,
+): Promise<{ isrs?: string; naam?: string; datagat?: Datagat }> {
+  const value = input.trim();
+  if (!value) {
+    return {
+      datagat: { code: "euris-brug-query-missing", message: "Geen brug opgegeven.", severity: "blocking" },
+    };
+  }
+  if (ISRS_PATTERN.test(value)) return { isrs: value };
+
+  const url = `${BASE_URL}/visuris/api/BridgeAreas/GetCompactBridgeAreas?$search=${encodeURIComponent(value)}&$top=8`;
+  let page: unknown;
+  try {
+    page = await getJson<unknown>(url, { token: TOKEN });
+  } catch (error) {
+    return {
+      datagat: {
+        code: "euris-brug-api-failed",
+        message: `EuRIS-brugzoeken faalde: ${errMsg(error)}`,
+        severity: "blocking",
+      },
+    };
+  }
+
+  const areas = recordsFromPage(page)
+    .map((r) => ({ isrs: str(r, "isrs"), naam: str(r, "name", "nationalObjectName") }))
+    .filter((a) => a.isrs);
+  if (!areas.length) {
+    return {
+      datagat: {
+        code: "euris-brug-not-found",
+        message: `Geen brug gevonden voor "${value}". Zoek de exacte naam met euris_zoek.`,
+        severity: "caution",
+      },
+    };
+  }
+  if (areas.length === 1) return { isrs: areas[0]!.isrs, naam: areas[0]!.naam };
+  const exact = areas.filter((a) => a.naam.trim().toLowerCase() === value.toLowerCase());
+  if (exact.length === 1) return { isrs: exact[0]!.isrs, naam: exact[0]!.naam };
+  const list = areas
+    .slice(0, 6)
+    .map((a) => `${a.naam} — ${a.isrs}`)
+    .join("; ");
+  return {
+    datagat: {
+      code: "euris-brug-ambiguous",
+      message: `Meerdere mogelijke bruggen voor "${value}". Kies er één en herhaal met de ISRS-code. Kandidaten: ${list}`,
+      severity: "caution",
+    },
+  };
+}
+
+// === Ports & terminals (Ports_v1 / Terminals_v1) ===========================
+// A port or terminal's facility info. GetPorts/GetTerminals have no search and
+// return everything, so we resolve a name → ISRS via the RIS index (whose ISRS
+// IS the port/terminal locode) and then fetch the single detail record.
+
+export interface PortInfo {
+  isrs: string;
+  naam: string;
+  soort: "haven" | "terminal";
+  vaarweg?: string;
+  functie?: string; // RIS function, e.g. "Ferry-terminal", "Harbour Basin"
+  ladingsoorten?: string; // loaD_TYPESMessage (cargo types)
+  overslag?: string; // trshgdMessage (transhipment goods — terminals)
+  brandstof?: string; // aV_FUELMessage (bunker fuel available — terminals)
+  eigenaar?: string; // owN_NAME
+  adres?: string;
+  marifoon?: string; // VHF / communication
+}
+
+export async function getPort(naam: string, soort: "haven" | "terminal"): Promise<SourceResult<PortInfo>> {
+  const resolved = await resolveToIsrs(naam, "euris-haveninfo");
+  if (resolved.datagat) return { bronregels: [], datagaten: [resolved.datagat] };
+  const isrs = resolved.isrs!;
+
+  const path =
+    soort === "terminal"
+      ? `/visuris/api/Terminals/GetTerminal?isrs=${encodeURIComponent(isrs)}`
+      : `/visuris/api/Ports/GetPort?isrs=${encodeURIComponent(isrs)}`;
+
+  let raw: unknown;
+  try {
+    raw = await getJson<unknown>(`${BASE_URL}${path}`, { token: TOKEN });
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      return gap(
+        "euris-haveninfo-not-a-port",
+        `Geen ${soort} gevonden voor "${resolved.naam ?? isrs}". Mogelijk is dit een ander type object, of kies de andere soort (haven/terminal).`,
+        "caution",
+      );
+    }
+    return gap(
+      "euris-haveninfo-api-failed",
+      `EuRIS-haveninfo kon niet worden opgehaald: ${errMsg(error)}`,
+      "blocking",
+    );
+  }
+  if (!isRecord(raw) || !str(raw, "objectname", "objectName")) {
+    return gap(
+      "euris-haveninfo-not-a-port",
+      `Geen ${soort}gegevens voor "${resolved.naam ?? isrs}".`,
+      "caution",
+    );
+  }
+
+  const data: PortInfo = {
+    isrs,
+    naam: str(raw, "objectname", "objectName") || resolved.naam || isrs,
+    soort,
+    vaarweg: str(raw, "wW_NAME", "rT_NAME") || undefined,
+    functie: str(raw, "risFunctionMessage") || resolved.type || str(raw, "fnction") || undefined,
+    ladingsoorten: str(raw, "loaD_TYPESMessage") || undefined,
+    overslag: str(raw, "trshgdMessage") || undefined,
+    brandstof: str(raw, "aV_FUELMessage") || undefined,
+    eigenaar: str(raw, "owN_NAME", "operator") || undefined,
+    adres: str(raw, "address", "owN_ADDR") || undefined,
+    marifoon: str(raw, "comname") || undefined,
+  };
+
+  return {
+    data,
+    bronregels: [
+      {
+        source: "EuRIS",
+        subject: `${soort === "terminal" ? "Terminal" : "Haven"} ${data.naam}`,
+        value: [data.vaarweg, data.functie].filter(Boolean).join(" — ") || data.naam,
+        note: soort === "terminal" ? "EuRIS Terminals_v1" : "EuRIS Ports_v1",
+      },
+    ],
+    datagaten: [],
+  };
+}
+
 // --- helpers ---------------------------------------------------------------
 
 function toWaterLevel(record: Record<string, unknown>, expected: Grootheid): WaterLevel | undefined {

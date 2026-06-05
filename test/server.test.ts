@@ -5,7 +5,7 @@ import { createServer } from "../src/server.js";
 import { guarded, toToolResult } from "../src/tools/result.js";
 
 describe("server", () => {
-  it("registers all eight tools and lists them over MCP", async () => {
+  it("registers all thirteen tools and lists them over MCP", async () => {
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: "test", version: "0.0.0" }, { capabilities: {} });
@@ -16,8 +16,13 @@ describe("server", () => {
       "echo",
       "euris_bedieningstijden",
       "euris_berichten",
+      "euris_brug",
+      "euris_haveninfo",
+      "euris_ligplaatsen",
+      "euris_objectberichten",
       "euris_objectstatus",
       "euris_route",
+      "euris_routeimpact",
       "euris_waterinfo",
       "euris_zoek",
       "waterstand",

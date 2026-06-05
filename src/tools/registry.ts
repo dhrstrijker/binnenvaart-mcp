@@ -1,9 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
+  getBerths,
+  getBridge,
   getNotices,
+  getObjectNotices,
   getObjectStatus,
   getOperationTimes,
+  getPort,
+  getRouteImpact,
   getVoyage,
   getWaterInfo,
   getWaterLevel,
@@ -216,5 +221,110 @@ export function registerTools(server: McpServer): void {
       },
     },
     async ({ vaarweg, land }) => guarded("euris-berichten-unexpected", () => getNotices({ vaarweg, land })),
+  );
+
+  // M4 — Notices to Skippers tied to one specific object (lock/bridge/…). Use
+  // this when the skipper asks about a named object; euris_berichten is for a
+  // whole fairway/country.
+  server.registerTool(
+    "euris_objectberichten",
+    {
+      title: "Berichten voor een object (EuRIS NtS)",
+      description: [
+        "Haal actuele berichten aan de scheepvaart (Notices to Skippers) op die aan één specifiek object (sluis, brug, meldpunt) hangen.",
+        "Geef een ISRS-code (via euris_zoek) of een naam; bij meerdere mogelijke objecten krijg je kandidaten terug. Toont alleen actieve en aankomende berichten.",
+        "Voor berichten op een hele vaarweg of in een land gebruik je euris_berichten. Geef geen bindend vaaradvies; dit is brondata.",
+      ].join(" "),
+      inputSchema: {
+        object: z
+          .string()
+          .describe("Naam of ISRS-code van een object, bijvoorbeeld 'Sluis Weurt' of een ISRS-code."),
+      },
+    },
+    async ({ object }) => guarded("euris-objectberichten-unexpected", () => getObjectNotices(object)),
+  );
+
+  // M4 — NtS impacts geo-anchored to objects (points) and stretches (lines),
+  // with a structured type and sometimes a limit value. Filtered by fairway
+  // and/or country, active only.
+  server.registerTool(
+    "euris_routeimpact",
+    {
+      title: "Route-impact (EuRIS NtS-punten/-lijnen)",
+      description: [
+        "Haal actieve route-impact op uit EuRIS: berichten aan de scheepvaart die als punt (op een object) of lijn (op een traject) op de vaarweg liggen, met hun soort en eventueel een beperkingswaarde.",
+        "Geef minstens een vaarweg (bijv. 'Waal') en/of een landcode (NL/BE/DE/FR) op om te filteren — corridorbreed zijn het er te veel.",
+        "Vult euris_berichten aan met geografisch verankerde beperkingen. Geef geen bindend vaaradvies; dit is brondata.",
+      ].join(" "),
+      inputSchema: {
+        vaarweg: z
+          .string()
+          .optional()
+          .describe("Vaarwegnaam om op te filteren, bijvoorbeeld 'Waal'. Optioneel."),
+        land: z.string().optional().describe("Landcode om op te filteren: NL, BE, DE of FR. Optioneel."),
+      },
+    },
+    async ({ vaarweg, land }) =>
+      guarded("euris-routeimpact-unexpected", () => getRouteImpact({ vaarweg, land })),
+  );
+
+  // M4 — berths / mooring places by name, with inline occupancy (Berth_v2).
+  server.registerTool(
+    "euris_ligplaatsen",
+    {
+      title: "Ligplaatsen (EuRIS Berths)",
+      description: [
+        "Zoek ligplaatsen (berths / mooring places) op naam in EuRIS en krijg per ligplaats de vaarweg, oever, bezetting en of er gevaarlijke stoffen (ADN) zijn toegestaan.",
+        "Handig voor het plannen van een overnachting of wachtplaats. Geef geen bindend vaaradvies; dit is brondata, de schipper en officiële bronnen beslissen.",
+      ].join(" "),
+      inputSchema: {
+        query: z
+          .string()
+          .describe("Plaats of ligplaatsnaam, bijvoorbeeld 'Nijmegen' of 'Wachtplaats sluis Weurt'."),
+      },
+    },
+    async ({ query }) => guarded("euris-ligplaatsen-unexpected", () => getBerths(query)),
+  );
+
+  // M4 — static bridge dimensions: clearance width + registered height + datum.
+  // Live clearance is euris_waterinfo (VER); open/closed is euris_objectstatus.
+  server.registerTool(
+    "euris_brug",
+    {
+      title: "Brug: doorvaartmaten (EuRIS)",
+      description: [
+        "Haal de geregistreerde doorvaartmaten van een brug op uit EuRIS: doorvaartbreedte en doorvaarthoogte met referentievlak.",
+        "Geef een ISRS-code of een brugnaam; bij meerdere mogelijke bruggen krijg je kandidaten terug. Ontbreekt de hoogte, dan staat dat als datagat vermeld.",
+        "Voor de áctuele doorvaarthoogte (sensor) gebruik je euris_waterinfo (doorvaarthoogte/VER); voor open/dicht euris_objectstatus. Geef geen bindend vaaradvies; dit is brondata.",
+      ].join(" "),
+      inputSchema: {
+        object: z.string().describe("Naam of ISRS-code van een brug, bijvoorbeeld 'Zegerbrug'."),
+      },
+    },
+    async ({ object }) => guarded("euris-brug-unexpected", () => getBridge(object)),
+  );
+
+  // M5 — port or terminal facility info (Ports_v1 / Terminals_v1). Resolves a
+  // name to ISRS via the RIS index, then fetches the single detail record.
+  server.registerTool(
+    "euris_haveninfo",
+    {
+      title: "Haven- of terminalinfo (EuRIS)",
+      description: [
+        "Haal informatie over een haven of terminal op uit EuRIS: vaarweg, functie, en voor terminals ook ladingsoorten, overslag en of er brandstof (bunkeren) is.",
+        "Kies de soort: 'haven' (port/havenbekken) of 'terminal' (overslag-/aanlegterminal). Geef een naam of ISRS-code; bij meerdere mogelijke objecten krijg je kandidaten terug.",
+        "Veel skippers verwijzen naar havens en terminals als bestemming of overslagpunt. Geef geen bindend vaaradvies; dit is brondata.",
+      ].join(" "),
+      inputSchema: {
+        naam: z
+          .string()
+          .describe("Naam of ISRS-code van een haven of terminal, bijvoorbeeld '1e Binnenhaven Middelburg'."),
+        soort: z
+          .enum(["haven", "terminal"])
+          .default("haven")
+          .describe("Soort object: 'haven' (havenbekken/port) of 'terminal' (overslag-/aanlegterminal)."),
+      },
+    },
+    async ({ naam, soort }) => guarded("euris-haveninfo-unexpected", () => getPort(naam, soort)),
   );
 }

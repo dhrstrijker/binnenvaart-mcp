@@ -1,9 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  getBerths,
+  getBridge,
   getNotices,
+  getObjectNotices,
   getObjectStatus,
   getOperationTimes,
+  getPort,
+  getRouteImpact,
   getVoyage,
   getWaterInfo,
   getWaterLevel,
@@ -69,5 +74,46 @@ describe("real EuRIS response fixtures parse cleanly", () => {
     const r = await getOperationTimes("NLAMR001030949000542", "2026-06-06");
     expect(r.data?.perioden.length).toBeGreaterThan(0);
     expect(r.data?.perioden[0]?.status).toBeTruthy();
+  });
+
+  it("NtS per object -> active notices", async () => {
+    mockJson(load("nts-object"));
+    const r = await getObjectNotices("NLNIJ001190971000118");
+    expect(r.data?.length).toBeGreaterThan(0);
+    expect(r.data?.[0]?.titel).toBeTruthy();
+  });
+
+  it("route-impact points -> impacts with a fairway", async () => {
+    mockJson(load("route-impact-points"));
+    const r = await getRouteImpact({ vaarweg: "Maas-Waalkanaal" });
+    expect(r.data?.length).toBeGreaterThan(0);
+    expect(r.data?.[0]?.titel).toBeTruthy();
+  });
+
+  it("berths -> mooring places with occupancy", async () => {
+    mockJson(load("berths-compact"));
+    const r = await getBerths("Nijmegen");
+    expect(r.data?.length).toBeGreaterThan(0);
+    expect(r.data?.[0]?.naam).toBeTruthy();
+  });
+
+  it("bridge -> clearance dimensions", async () => {
+    mockJson(load("bridge"));
+    const r = await getBridge("NLADV002200484400382");
+    expect(r.data?.doorvaartbreedteCm).toBeTypeOf("number");
+  });
+
+  it("port -> harbour facility info", async () => {
+    mockJson(load("port"));
+    const r = await getPort("NLMID0134A0204200004", "haven");
+    expect(r.data?.naam).toBeTruthy();
+    expect(r.data?.soort).toBe("haven");
+  });
+
+  it("terminal -> terminal facility info", async () => {
+    mockJson(load("terminal"));
+    const r = await getPort("NLAAL001203124300067", "terminal");
+    expect(r.data?.naam).toBeTruthy();
+    expect(r.data?.functie).toBeTruthy();
   });
 });
