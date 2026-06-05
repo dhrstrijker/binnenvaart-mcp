@@ -182,8 +182,8 @@ export async function searchObjects(query: string): Promise<SourceResult<ObjectC
   // found" (which makes the model think a valid code is invalid).
   const isIsrs = ISRS_PATTERN.test(q);
   const queryString = isIsrs
-    ? `?$filter=${encodeURIComponent(`isrs eq '${q.replace(/'/g, "''")}'`)}&$top=8`
-    : `?$search=${encodeURIComponent(q)}&$top=8`;
+    ? `?$filter=${encodeURIComponent(`isrs eq '${q.replace(/'/g, "''")}'`)}&$top=${SEARCH_RESULT_LIMIT}`
+    : `?$search=${encodeURIComponent(q)}&$top=${SEARCH_FETCH_LIMIT}`;
   const url = `${BASE_URL}/visuris/api/RisIndices_v2/GetRISIndexObjects${queryString}`;
 
   let page: unknown;
@@ -197,9 +197,14 @@ export async function searchObjects(query: string): Promise<SourceResult<ObjectC
     );
   }
 
-  const candidates = recordsFromPage(page)
+  const all = recordsFromPage(page)
     .map(toCandidate)
     .filter((c): c is ObjectCandidate => c !== undefined);
+  // The RIS index $search returns mixed, poorly-ordered hits — junctions and
+  // notification points often rank above the harbour or town a skipper means.
+  // Re-rank so the obvious places come first, then keep the best few. An exact
+  // ISRS lookup is already precise, so it is left as-is.
+  const candidates = isIsrs ? all : rankCandidates(all, q).slice(0, SEARCH_RESULT_LIMIT);
   if (!candidates.length) {
     return gap("euris-zoek-no-candidates", `EuRIS vond geen objecten voor "${q}".`, "caution");
   }
@@ -216,6 +221,51 @@ export async function searchObjects(query: string): Promise<SourceResult<ObjectC
     ],
     datagaten: [],
   };
+}
+
+const SEARCH_FETCH_LIMIT = 25; // cast a wide net from the RIS index…
+const SEARCH_RESULT_LIMIT = 8; // …then keep the best few after ranking.
+
+/**
+ * Rank RIS-index hits so the objects a skipper actually means — towns, harbour
+ * basins, locks, bridges — come before graph-internals (junctions, dead ends)
+ * and notification points. Name and fairway matches on the query dominate; the
+ * original order breaks ties (stable sort).
+ */
+function rankCandidates(candidates: ObjectCandidate[], query: string): ObjectCandidate[] {
+  const q = query.toLowerCase();
+  return candidates
+    .map((c, i) => ({ c, i, s: candidateScore(c, q) }))
+    .sort((a, b) => b.s - a.s || a.i - b.i)
+    .map((x) => x.c);
+}
+
+function candidateScore(c: ObjectCandidate, q: string): number {
+  const name = c.naam.toLowerCase();
+  const type = (c.type ?? "").toLowerCase();
+  const fairway = (c.vaarweg ?? "").toLowerCase();
+  let s = 0;
+
+  // Name relevance: exact > "<query> te <plaats>" / prefix > contained.
+  if (name === q) s += 100;
+  else if (name.startsWith(`${q} `) || name.startsWith(`${q},`)) s += 60;
+  else if (name.startsWith(q)) s += 45;
+  else if (name.includes(`(${q})`) || name.includes(` ${q} `)) s += 25;
+  else if (name.includes(q)) s += 15;
+
+  if (fairway.includes(q)) s += 15;
+
+  // Type relevance: places & landmarks up, routing graph-internals down.
+  if (type.includes("harbour") || type.includes("harbor") || type.includes("port")) s += 35;
+  else if (type.includes("lock") || type.includes("bridge")) s += 25;
+  else if (type.includes("berth")) s += 12;
+  else if (type.includes("terminal")) s += 6;
+
+  if (type.includes("notification")) s -= 25;
+  if (type.includes("dead end") || type.includes("end of waterway")) s -= 60;
+  if (name.startsWith("junction") || name.startsWith("ongoing")) s -= 60;
+
+  return s;
 }
 
 function toCandidate(record: Record<string, unknown>): ObjectCandidate | undefined {
