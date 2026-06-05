@@ -176,8 +176,15 @@ export async function searchObjects(query: string): Promise<SourceResult<ObjectC
     return gap("euris-zoek-query-missing", "Geen zoekterm opgegeven.", "blocking");
   }
 
-  const url =
-    `${BASE_URL}/visuris/api/RisIndices_v2/GetRISIndexObjects` + `?$search=${encodeURIComponent(q)}&$top=8`;
+  // A bare ISRS code is not a name: the RIS index `$search` matches object names
+  // and returns nothing for a code. Look it up by exact `$filter` instead, so the
+  // tool resolves a code to its object rather than misleadingly reporting "not
+  // found" (which makes the model think a valid code is invalid).
+  const isIsrs = ISRS_PATTERN.test(q);
+  const queryString = isIsrs
+    ? `?$filter=${encodeURIComponent(`isrs eq '${q.replace(/'/g, "''")}'`)}&$top=8`
+    : `?$search=${encodeURIComponent(q)}&$top=8`;
+  const url = `${BASE_URL}/visuris/api/RisIndices_v2/GetRISIndexObjects${queryString}`;
 
   let page: unknown;
   try {

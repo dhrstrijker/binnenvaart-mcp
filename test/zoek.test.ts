@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { searchObjects } from "../src/sources/euris.js";
-import { mockJson } from "./helpers.js";
+import { mockFetch, mockJson } from "./helpers.js";
 
 describe("searchObjects", () => {
   it("maps RIS-index records to candidates, preferring the national name", async () => {
@@ -28,6 +28,22 @@ describe("searchObjects", () => {
     expect(c.type).toBe("Bridge Area");
     expect(c.vaarweg).toBe("Waal");
     expect(c.plaats).toBe("Nijmegen");
+  });
+
+  it("looks up a bare ISRS code by filter, not by name search", async () => {
+    let calledUrl = "";
+    mockFetch((url) => {
+      calledUrl = url;
+      return {
+        items: [
+          { isrs: "NLLNT001010798600259", nationalObjectName: "Spoorbrug Nijmegen (Waal)", functionMessage: "Bridge Area" },
+        ],
+      };
+    });
+    const r = await searchObjects("NLLNT001010798600259");
+    expect(decodeURIComponent(calledUrl)).toContain("$filter=isrs eq 'NLLNT001010798600259'");
+    expect(decodeURIComponent(calledUrl)).not.toContain("$search=");
+    expect(r.data?.[0]?.isrs).toBe("NLLNT001010798600259");
   });
 
   it("returns a caution gap when nothing matches", async () => {
