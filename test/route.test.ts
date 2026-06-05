@@ -67,6 +67,39 @@ describe("getVoyage", () => {
     expect(v?.objecten[1]).toMatchObject({ type: "brug", lat: 51.2146, lon: 4.5763 });
   });
 
+  it("decodes the segment CompressedGeometry into the route line", async () => {
+    // Encoded (precision 6) polyline of [[51.85,5.85],[51.86,5.80],[51.87,5.75]].
+    const encoded = "_pt{aB_x`dJ_pR~s`B_pR~s`B";
+    mockFetch(() =>
+      ok([
+        itinerary({
+          Legs: [
+            {
+              FromObjectName: "A",
+              ToObjectName: "B",
+              Segments: [
+                {
+                  CompressedGeometry: encoded,
+                  Events: [{ EventType: "Lock", ObjectName: "Sluis X", ISRS: "ZZ", Latitude: 51.86, Longitude: 5.8 }],
+                },
+              ],
+            },
+          ],
+        }),
+      ]),
+    );
+    const r = await getVoyage(ISRS_A, ISRS_B);
+    const v = r.data?.varianten[0];
+    // line comes from the decoded geometry, not the single event point.
+    expect(v?.geometrie).toEqual([
+      [5.85, 51.85],
+      [5.8, 51.86],
+      [5.75, 51.87],
+    ]);
+    // the lock is still surfaced as a located object marker.
+    expect(v?.objecten[0]).toMatchObject({ naam: "Sluis X", type: "sluis", lat: 51.86, lon: 5.8 });
+  });
+
   it("dedupes identical FASTEST/SHORTEST itineraries into one", async () => {
     mockFetch(() =>
       ok([itinerary({ ComputationType: "FASTEST" }), itinerary({ ComputationType: "SHORTEST" })]),

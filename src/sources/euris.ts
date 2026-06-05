@@ -395,6 +395,7 @@ interface Leg {
 }
 interface Segment {
   Events?: EventRecord[];
+  CompressedGeometry?: string | null; // Google-encoded polyline (precision 6) of this leg's fairway line
 }
 interface EventRecord {
   EventType?: string;
@@ -482,18 +483,30 @@ async function resolveEndpoint(
 // keep two views: the lock/bridge objects (for the answer) and the full ordered
 // point list (for drawing the route on a map). The point list is decimated and
 // rounded so the geometry stays small enough to travel inside the tool result.
-const ROUTE_GEOMETRY_MAX_POINTS = 120;
+// Kept modest: the result is pretty-printed JSON, so each extra point costs ~50
+// characters. ~64 points still draw a smooth fairway line at overview zoom while
+// keeping the route payload well within a chat client's per-tool size budget.
+const ROUTE_GEOMETRY_MAX_POINTS = 64;
 
 function toVariant(itin: Itinerary): RouteVariant {
   const objecten: RouteObject[] = [];
   const punten: [number, number][] = [];
   for (const leg of itin.Legs ?? []) {
     for (const seg of leg.Segments ?? []) {
+      // The dense fairway line lives in the segment's encoded geometry; decode it
+      // when present, and only fall back to per-event coordinates when it isn't.
+      const segmentLine =
+        typeof seg.CompressedGeometry === "string" && seg.CompressedGeometry.length > 0
+          ? decodePolyline(seg.CompressedGeometry)
+          : [];
+      for (const [lat, lon] of segmentLine) {
+        punten.push([round5(lon), round5(lat)]);
+      }
       for (const ev of seg.Events ?? []) {
         const lat = typeof ev.Latitude === "number" ? round5(ev.Latitude) : undefined;
         const lon = typeof ev.Longitude === "number" ? round5(ev.Longitude) : undefined;
-        if (lat !== undefined && lon !== undefined) {
-          punten.push([lon, lat]);
+        if (segmentLine.length === 0 && lat !== undefined && lon !== undefined) {
+          punten.push([lon, lat]); // no segment line — use the event itself as a vertex
         }
         const type = eventKind(ev.EventType);
         if (!type) continue; // only locks and bridges in the object list
@@ -522,6 +535,38 @@ function toVariant(itin: Itinerary): RouteVariant {
 
 function round5(n: number): number {
   return Math.round(n * 1e5) / 1e5;
+}
+
+/**
+ * Decode a Google "encoded polyline" string into [lat, lon] pairs. EuRIS encodes
+ * each route segment's fairway line this way at precision 6 (so the integer deltas
+ * are scaled by 1e6). This is the dense geometry the per-event coordinates lack.
+ */
+function decodePolyline(encoded: string, precision = 6): [number, number][] {
+  const factor = Math.pow(10, precision);
+  const out: [number, number][] = [];
+  let index = 0;
+  let lat = 0;
+  let lon = 0;
+
+  const readDelta = (): number => {
+    let result = 0;
+    let shift = 0;
+    let byte: number;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    return result & 1 ? ~(result >> 1) : result >> 1;
+  };
+
+  while (index < encoded.length) {
+    lat += readDelta();
+    lon += readDelta();
+    out.push([lat / factor, lon / factor]);
+  }
+  return out;
 }
 
 /** Evenly downsample a point list to at most `max`, always keeping first + last. */
