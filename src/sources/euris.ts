@@ -1461,6 +1461,88 @@ async function resolveBridgeArea(
   };
 }
 
+// === Ports & terminals (Ports_v1 / Terminals_v1) ===========================
+// A port or terminal's facility info. GetPorts/GetTerminals have no search and
+// return everything, so we resolve a name → ISRS via the RIS index (whose ISRS
+// IS the port/terminal locode) and then fetch the single detail record.
+
+export interface PortInfo {
+  isrs: string;
+  naam: string;
+  soort: "haven" | "terminal";
+  vaarweg?: string;
+  functie?: string; // RIS function, e.g. "Ferry-terminal", "Harbour Basin"
+  ladingsoorten?: string; // loaD_TYPESMessage (cargo types)
+  overslag?: string; // trshgdMessage (transhipment goods — terminals)
+  brandstof?: string; // aV_FUELMessage (bunker fuel available — terminals)
+  eigenaar?: string; // owN_NAME
+  adres?: string;
+  marifoon?: string; // VHF / communication
+}
+
+export async function getPort(naam: string, soort: "haven" | "terminal"): Promise<SourceResult<PortInfo>> {
+  const resolved = await resolveToIsrs(naam, "euris-haveninfo");
+  if (resolved.datagat) return { bronregels: [], datagaten: [resolved.datagat] };
+  const isrs = resolved.isrs!;
+
+  const path =
+    soort === "terminal"
+      ? `/visuris/api/Terminals/GetTerminal?isrs=${encodeURIComponent(isrs)}`
+      : `/visuris/api/Ports/GetPort?isrs=${encodeURIComponent(isrs)}`;
+
+  let raw: unknown;
+  try {
+    raw = await getJson<unknown>(`${BASE_URL}${path}`, { token: TOKEN });
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      return gap(
+        "euris-haveninfo-not-a-port",
+        `Geen ${soort} gevonden voor "${resolved.naam ?? isrs}". Mogelijk is dit een ander type object, of kies de andere soort (haven/terminal).`,
+        "caution",
+      );
+    }
+    return gap(
+      "euris-haveninfo-api-failed",
+      `EuRIS-haveninfo kon niet worden opgehaald: ${errMsg(error)}`,
+      "blocking",
+    );
+  }
+  if (!isRecord(raw) || !str(raw, "objectname", "objectName")) {
+    return gap(
+      "euris-haveninfo-not-a-port",
+      `Geen ${soort}gegevens voor "${resolved.naam ?? isrs}".`,
+      "caution",
+    );
+  }
+
+  const data: PortInfo = {
+    isrs,
+    naam: str(raw, "objectname", "objectName") || resolved.naam || isrs,
+    soort,
+    vaarweg: str(raw, "wW_NAME", "rT_NAME") || undefined,
+    functie: str(raw, "risFunctionMessage") || resolved.type || str(raw, "fnction") || undefined,
+    ladingsoorten: str(raw, "loaD_TYPESMessage") || undefined,
+    overslag: str(raw, "trshgdMessage") || undefined,
+    brandstof: str(raw, "aV_FUELMessage") || undefined,
+    eigenaar: str(raw, "owN_NAME", "operator") || undefined,
+    adres: str(raw, "address", "owN_ADDR") || undefined,
+    marifoon: str(raw, "comname") || undefined,
+  };
+
+  return {
+    data,
+    bronregels: [
+      {
+        source: "EuRIS",
+        subject: `${soort === "terminal" ? "Terminal" : "Haven"} ${data.naam}`,
+        value: [data.vaarweg, data.functie].filter(Boolean).join(" — ") || data.naam,
+        note: soort === "terminal" ? "EuRIS Terminals_v1" : "EuRIS Ports_v1",
+      },
+    ],
+    datagaten: [],
+  };
+}
+
 // --- helpers ---------------------------------------------------------------
 
 function toWaterLevel(record: Record<string, unknown>, expected: Grootheid): WaterLevel | undefined {

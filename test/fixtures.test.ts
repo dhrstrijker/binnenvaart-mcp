@@ -7,6 +7,7 @@ import {
   getObjectNotices,
   getObjectStatus,
   getOperationTimes,
+  getPort,
   getRouteImpact,
   getVoyage,
   getWaterInfo,
@@ -100,5 +101,19 @@ describe("real EuRIS response fixtures parse cleanly", () => {
     mockJson(load("bridge"));
     const r = await getBridge("NLADV002200484400382");
     expect(r.data?.doorvaartbreedteCm).toBeTypeOf("number");
+  });
+
+  it("port -> harbour facility info", async () => {
+    mockJson(load("port"));
+    const r = await getPort("NLMID0134A0204200004", "haven");
+    expect(r.data?.naam).toBeTruthy();
+    expect(r.data?.soort).toBe("haven");
+  });
+
+  it("terminal -> terminal facility info", async () => {
+    mockJson(load("terminal"));
+    const r = await getPort("NLAAL001203124300067", "terminal");
+    expect(r.data?.naam).toBeTruthy();
+    expect(r.data?.functie).toBeTruthy();
   });
 });

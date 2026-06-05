@@ -7,6 +7,7 @@ import {
   getObjectNotices,
   getObjectStatus,
   getOperationTimes,
+  getPort,
   getRouteImpact,
   getVoyage,
   getWaterInfo,
@@ -301,5 +302,29 @@ export function registerTools(server: McpServer): void {
       },
     },
     async ({ object }) => guarded("euris-brug-unexpected", () => getBridge(object)),
+  );
+
+  // M5 — port or terminal facility info (Ports_v1 / Terminals_v1). Resolves a
+  // name to ISRS via the RIS index, then fetches the single detail record.
+  server.registerTool(
+    "euris_haveninfo",
+    {
+      title: "Haven- of terminalinfo (EuRIS)",
+      description: [
+        "Haal informatie over een haven of terminal op uit EuRIS: vaarweg, functie, en voor terminals ook ladingsoorten, overslag en of er brandstof (bunkeren) is.",
+        "Kies de soort: 'haven' (port/havenbekken) of 'terminal' (overslag-/aanlegterminal). Geef een naam of ISRS-code; bij meerdere mogelijke objecten krijg je kandidaten terug.",
+        "Veel skippers verwijzen naar havens en terminals als bestemming of overslagpunt. Geef geen bindend vaaradvies; dit is brondata.",
+      ].join(" "),
+      inputSchema: {
+        naam: z
+          .string()
+          .describe("Naam of ISRS-code van een haven of terminal, bijvoorbeeld '1e Binnenhaven Middelburg'."),
+        soort: z
+          .enum(["haven", "terminal"])
+          .default("haven")
+          .describe("Soort object: 'haven' (havenbekken/port) of 'terminal' (overslag-/aanlegterminal)."),
+      },
+    },
+    async ({ naam, soort }) => guarded("euris-haveninfo-unexpected", () => getPort(naam, soort)),
   );
 }

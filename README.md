@@ -32,6 +32,7 @@ To answer these questions correctly the LLM needs the correct data, which it get
 | `euris_routeimpact` | Active NtS impacts geo-anchored to objects (points) and stretches (lines) on a fairway and/or in a country, each with its impact type and any limit value. |
 | `euris_ligplaatsen` | Berths / mooring places by name, with the waterway, bank, occupancy band and whether dangerous goods (ADN) are allowed. |
 | `euris_brug` | Registered bridge dimensions — clearance width and height with its datum (for live clearance use `euris_waterinfo`; for open/closed use `euris_objectstatus`). |
+| `euris_haveninfo` | Port or terminal facility info — waterway, function, and for terminals the cargo types, transhipment and whether bunker fuel is available. |
 
 The tools speak Dutch (the skipper's language); the model translates as needed.
 
