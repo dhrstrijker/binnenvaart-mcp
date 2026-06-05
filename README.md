@@ -28,6 +28,10 @@ To answer these questions correctly the LLM needs the correct data, which it get
 | `euris_zoek` | Resolves a place or object name to ISRS codes — locks, bridges, berths, reporting points — so the model can pin an exact start/end and ask which one you mean. |
 | `euris_route` | A voyage between two points for your ship's dimensions: distance, sailing time, the locks and bridges en route, tide-dependence, and fastest/shortest alternatives — honouring operating hours, tides and active notices. |
 | `euris_berichten` | Current Notices to Skippers (closures, cautions, works) for a fairway and/or country. |
+| `euris_objectberichten` | Notices to Skippers tied to one specific object (lock, bridge, reporting point) — active and upcoming only. |
+| `euris_routeimpact` | Active NtS impacts geo-anchored to objects (points) and stretches (lines) on a fairway and/or in a country, each with its impact type and any limit value. |
+| `euris_ligplaatsen` | Berths / mooring places by name, with the waterway, bank, occupancy band and whether dangerous goods (ADN) are allowed. |
+| `euris_brug` | Registered bridge dimensions — clearance width and height with its datum (for live clearance use `euris_waterinfo`; for open/closed use `euris_objectstatus`). |
 
 The tools speak Dutch (the skipper's language); the model translates as needed.
 

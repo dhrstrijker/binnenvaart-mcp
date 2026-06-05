@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "locode": "NLNIJ001011130700251",
+      "objectname": "Ligplaats passagiersschepen Nijmegen",
+      "nationalObjectname": "Ligplaats passagiersschepen Nijmegen",
+      "waterwayName": "Boven-Rijn, Waal, Boven-Merwede, Beneden-Merwede en Noord",
+      "bankMessage": "Left bank",
+      "occupancy": "0",
+      "occupancyMessage": "1 - 40% occupation",
+      "adnModeMessage": "Disallowed",
+      "reservableMessage": "No",
+      "berthCategoryMessages": null
+    }
+  ]
+}

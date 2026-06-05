@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "ntsNumber": "2025/6765/6 (Rijkswaterstaat)",
+      "isrs": "NLNIJ001190971000118",
+      "objectName": "Oostkolk sluis Weurt",
+      "title": "Oostkolk sluis Weurt",
+      "dateStart": "2026-07-22T08:00:00+02:00",
+      "dateEnd": "2026-07-22T16:00:00+02:00",
+      "type": "TOT",
+      "valueFormatted": "",
+      "waterwayName": "Maas-Waalkanaal",
+      "countryCode": "NL"
+    }
+  ]
+}

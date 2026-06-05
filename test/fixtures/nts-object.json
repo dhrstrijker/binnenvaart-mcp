@@ -1,0 +1,23 @@
+{
+  "items": [
+    {
+      "headerId": "3425b804-1d9a-4154-b7d7-682831169318",
+      "organisation": "Rijkswaterstaat",
+      "dateIssue": "2026-05-23T06:30:06.5400064+02:00",
+      "dateStart": "2026-05-23",
+      "dateEnd": "9999-12-31",
+      "messageType": 1,
+      "messageTypeMessage": "fairway message",
+      "title": "blockage - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)",
+      "multilanguageTitles": "{\"nl\":\"stremming - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\",\"fr\":\"Navigation interrompue - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\",\"en\":\"blockage - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\",\"bg\":\"Препятствие - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\",\"cs\":\"uzávěra - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\",\"de\":\"Sperre - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\",\"hr\":\"Prepreka - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\",\"hu\":\"zárlat - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\",\"ro\":\"blocaj - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\",\"sk\":\"blokáda - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\",\"sr\":\"Препрека - Maas-Waalkanaal, Oostkolk sluis Weurt (Weurt)\"}",
+      "number": "2026/3000/0",
+      "countryCode": "NL",
+      "fairways": [
+        "Maas-Waalkanaal"
+      ],
+      "limitations": [
+        "OBSTRU"
+      ]
+    }
+  ]
+}
