@@ -305,8 +305,8 @@ export async function getVoyage(
     datagaten.push({
       code: "euris-route-no-dimensions",
       message:
-        "Geen (volledige) scheepsafmetingen opgegeven; de route houdt dan geen rekening met diepgang of doorvaarthoogte. Vraag de schipper naar diepgang en doorvaarthoogte (in cm) voor een betrouwbare passeerbaarheidscheck.",
-      severity: "caution",
+        "Deze route is niet gecontroleerd op passeerbaarheid: er zijn geen scheepsafmetingen opgegeven. De route zelf is gewoon berekend. Wil de schipper weten of het schip overal past (diepgang/doorvaarthoogte), dan kan dat met een herberekening mét afmetingen — maar dat is optioneel.",
+      severity: "info",
     });
   }
 
