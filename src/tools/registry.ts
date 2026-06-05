@@ -113,7 +113,7 @@ export function registerTools(server: McpServer): void {
       description: [
         "Haal de bedieningstijden (operation times) van een sluis of brug op uit EuRIS: wanneer wordt er wel en niet bediend.",
         "Geef een ISRS-code (via euris_zoek) of een naam; bij meerdere mogelijke objecten krijg je kandidaten terug.",
-        "Zonder datum toont de tool de komende zeven dagen; geef een datum (JJJJ-MM-DD) voor één specifieke dag.",
+        "Zonder datum toont de tool de komende zeven dagen; geef een datum (JJJJ-MM-DD) voor één specifieke dag — ook maanden vooruit (bijv. een winterdag) kan, tot ruim een jaar; valt de datum buiten dat venster, dan krijg je dat als datagat terug.",
         "Geef geen bindend vaaradvies; dit is brondata, de schipper en officiële bronnen beslissen.",
       ].join(" "),
       inputSchema: {

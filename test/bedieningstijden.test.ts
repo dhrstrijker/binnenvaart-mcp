@@ -30,6 +30,36 @@ describe("getOperationTimes", () => {
     expect(r.datagaten.map((d) => d.code)).toContain("euris-bedieningstijden-default-window");
   });
 
+  it("keeps only events on the requested local date (widened window, future date)", async () => {
+    // The API filters by start time, so a widened window also returns the
+    // neighbouring days' boundary blocks; only the requested date should survive.
+    mockRoutes([
+      {
+        match: "/operation-times/",
+        body: [
+          event({ dateStart: "2026-10-14T23:59:00+02:00", statusFormatted: "No operation" }),
+          event({ dateStart: "2026-10-15T00:00:00+02:00", statusFormatted: "Full operation" }),
+          event({ dateStart: "2026-10-15T23:59:00+02:00", statusFormatted: "No operation" }),
+          event({ dateStart: "2026-10-16T00:00:00+02:00", statusFormatted: "Full operation" }),
+        ],
+      },
+    ]);
+    const r = await getOperationTimes(ISRS, "2026-10-15");
+    expect(r.data?.perioden).toHaveLength(2);
+    expect(r.data?.perioden.every((p) => p.van?.startsWith("2026-10-15"))).toBe(true);
+  });
+
+  it("explains an out-of-horizon date via horizon-dates instead of a bare 'none'", async () => {
+    mockRoutes([
+      { match: "horizon-dates", body: ["2026-05-04T22:00:00+00:00", "2027-06-25T22:00:00+00:00"] },
+      { match: "/operation-times/", status: 404 },
+    ]);
+    const r = await getOperationTimes(ISRS, "2028-06-01");
+    expect(r.data).toBeUndefined();
+    expect(r.datagaten[0]?.code).toBe("euris-bedieningstijden-out-of-horizon");
+    expect(r.datagaten[0]?.message).toContain("2027-06-25");
+  });
+
   it("rejects a malformed date with a caution gap (no fetch)", async () => {
     const r = await getOperationTimes(ISRS, "6 juni");
     expect(r.data).toBeUndefined();

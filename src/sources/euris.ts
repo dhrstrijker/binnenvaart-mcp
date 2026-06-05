@@ -964,23 +964,38 @@ export async function getOperationTimes(
   const isrs = resolved.isrs!;
 
   const datagaten: Datagat[] = [];
+  const d = datum?.trim();
+  if (d && !DATE_ONLY.test(d)) {
+    return gap(
+      "euris-bedieningstijden-bad-date",
+      `Ongeldige datum "${datum}". Gebruik het formaat JJJJ-MM-DD.`,
+      "caution",
+    );
+  }
+
+  // The API filters events by start time, and a day's operation block starts at
+  // LOCAL midnight — which is the previous evening in UTC. So for a single date we
+  // query a widened UTC window (the day ±1) and keep only the events on the
+  // requested local date; a naive same-day UTC window would miss the day's main
+  // block. Without a date we show the coming week. The queryable horizon is ~13
+  // months ahead (see horizon-dates), so a future date like a winter day is fine.
+  let queryFrom: string;
+  let queryTo: string;
   let van: string;
   let tot: string;
-  const d = datum?.trim();
+  let filterDate: string | undefined;
   if (d) {
-    if (!DATE_ONLY.test(d)) {
-      return gap(
-        "euris-bedieningstijden-bad-date",
-        `Ongeldige datum "${datum}". Gebruik het formaat JJJJ-MM-DD.`,
-        "caution",
-      );
-    }
-    van = `${d}T00:00:00Z`;
-    tot = `${d}T23:59:59Z`;
+    queryFrom = isoShiftDays(`${d}T00:00:00Z`, -1);
+    queryTo = isoShiftDays(`${d}T00:00:00Z`, 2);
+    van = `${d}T00:00:00`;
+    tot = `${d}T23:59:59`;
+    filterDate = d;
   } else {
     const now = new Date();
-    van = now.toISOString();
-    tot = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    queryFrom = now.toISOString();
+    queryTo = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    van = queryFrom;
+    tot = queryTo;
     datagaten.push({
       code: "euris-bedieningstijden-default-window",
       message:
@@ -991,18 +1006,24 @@ export async function getOperationTimes(
 
   const url =
     `${BASE_URL}/api/v3/operation-times/${encodeURIComponent(isrs)}` +
-    `?validFrom=${encodeURIComponent(van)}&validTo=${encodeURIComponent(tot)}`;
+    `?validFrom=${encodeURIComponent(queryFrom)}&validTo=${encodeURIComponent(queryTo)}`;
 
   let page: unknown;
   try {
     page = await getJson<unknown>(url, { token: TOKEN });
   } catch (error) {
+    // A 404 for a specific date is usually "outside the available window" — say
+    // so honestly by consulting the object's queryable horizon.
     if (error instanceof HttpError && error.status === 404) {
-      datagaten.push({
-        code: "euris-bedieningstijden-none",
-        message: `Geen bedieningstijden bekend voor "${resolved.naam ?? isrs}".`,
-        severity: "caution",
-      });
+      datagaten.push(
+        d
+          ? await operationHorizonGap(isrs, d, resolved.naam)
+          : {
+              code: "euris-bedieningstijden-none",
+              message: `Geen bedieningstijden bekend voor "${resolved.naam ?? isrs}".`,
+              severity: "caution",
+            },
+      );
       return { bronregels: [], datagaten };
     }
     return gap(
@@ -1012,13 +1033,20 @@ export async function getOperationTimes(
     );
   }
 
-  const perioden = recordsFromPage(page).map(toOperationEvent);
+  let perioden = recordsFromPage(page).map(toOperationEvent);
+  if (filterDate) {
+    perioden = perioden.filter((p) => p.van !== undefined && dateOnly(p.van) === filterDate);
+  }
   if (!perioden.length) {
-    datagaten.push({
-      code: "euris-bedieningstijden-none",
-      message: `Geen bedieningstijden gevonden voor "${resolved.naam ?? isrs}" in deze periode.`,
-      severity: "caution",
-    });
+    datagaten.push(
+      d
+        ? await operationHorizonGap(isrs, d, resolved.naam)
+        : {
+            code: "euris-bedieningstijden-none",
+            message: `Geen bedieningstijden gevonden voor "${resolved.naam ?? isrs}" in deze periode.`,
+            severity: "caution",
+          },
+    );
     return { bronregels: [], datagaten };
   }
 
@@ -1142,4 +1170,46 @@ function gap<T>(code: string, message: string, severity: Datagat["severity"]): S
 /** Best-effort message from an unknown thrown value. */
 function errMsg(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Shift an ISO instant by whole days, returned as ISO (UTC). */
+function isoShiftDays(iso: string, days: number): string {
+  return new Date(Date.parse(iso) + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/** A 404 / empty result for a specific date usually means the date is outside the
+ *  object's queryable window. Consult horizon-dates to say so precisely; fall
+ *  back to a generic "none" if the horizon can't be read. */
+async function operationHorizonGap(isrs: string, datum: string, naam: string | undefined): Promise<Datagat> {
+  try {
+    const horizon = await getJson<unknown>(
+      `${BASE_URL}/api/v3/operation-times/${encodeURIComponent(isrs)}/horizon-dates`,
+      { token: TOKEN },
+    );
+    if (Array.isArray(horizon) && horizon.length >= 2) {
+      const min = dateOnly(String(horizon[0]));
+      const max = dateOnly(String(horizon[1]));
+      if (max && datum > max) {
+        return {
+          code: "euris-bedieningstijden-out-of-horizon",
+          message: `Datum ${datum} ligt na het beschikbare venster; bedieningstijden zijn op te vragen t/m ${max}.`,
+          severity: "caution",
+        };
+      }
+      if (min && datum < min) {
+        return {
+          code: "euris-bedieningstijden-out-of-horizon",
+          message: `Datum ${datum} ligt vóór het beschikbare venster; bedieningstijden zijn op te vragen vanaf ${min}.`,
+          severity: "caution",
+        };
+      }
+    }
+  } catch {
+    // fall through to the generic gap
+  }
+  return {
+    code: "euris-bedieningstijden-none",
+    message: `Geen bedieningstijden gevonden voor "${naam ?? isrs}" op ${datum}.`,
+    severity: "caution",
+  };
 }
