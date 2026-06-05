@@ -19,9 +19,9 @@ const itinerary = (over: Record<string, unknown> = {}) => ({
       Segments: [
         {
           Events: [
-            { EventType: "Lock", ObjectName: "Sluis Wijnegem", ISRS: ISRS_A },
-            { EventType: "Bridge", ObjectName: "Brug 2 Oelegem", ISRS: "BERAS02046BRGA101168" },
-            { EventType: "Vpln", ObjectName: "Splitsing", ISRS: "x" }, // not a lock/bridge -> dropped
+            { EventType: "Lock", ObjectName: "Sluis Wijnegem", ISRS: ISRS_A, Latitude: 51.2267, Longitude: 4.5378 },
+            { EventType: "Bridge", ObjectName: "Brug 2 Oelegem", ISRS: "BERAS02046BRGA101168", Latitude: 51.2146, Longitude: 4.5763 },
+            { EventType: "Vpln", ObjectName: "Splitsing", ISRS: "x", Latitude: 51.1963, Longitude: 4.6418 }, // not a lock/bridge -> dropped from objects, kept in line
           ],
         },
       ],
@@ -49,6 +49,22 @@ describe("getVoyage", () => {
     expect(v?.maxAfmetingen?.diepgangCm).toBe(340);
     expect(v?.objecten.map((o) => o.type)).toEqual(["sluis", "brug"]);
     expect(r.data?.van.naam).toBe("Sluis Wijnegem");
+  });
+
+  it("extracts route geometry and per-object coordinates for mapping", async () => {
+    mockFetch(() => ok([itinerary()]));
+    const r = await getVoyage(ISRS_A, ISRS_B);
+    const v = r.data?.varianten[0];
+    // every event with a position becomes a [lon, lat] vertex — including the
+    // non-lock split point, so the drawn line still follows the fairway.
+    expect(v?.geometrie).toEqual([
+      [4.5378, 51.2267],
+      [4.5763, 51.2146],
+      [4.6418, 51.1963],
+    ]);
+    // locks and bridges carry their own coordinates for map markers.
+    expect(v?.objecten[0]).toMatchObject({ naam: "Sluis Wijnegem", type: "sluis", lat: 51.2267, lon: 4.5378 });
+    expect(v?.objecten[1]).toMatchObject({ type: "brug", lat: 51.2146, lon: 4.5763 });
   });
 
   it("dedupes identical FASTEST/SHORTEST itineraries into one", async () => {

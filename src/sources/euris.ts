@@ -254,6 +254,7 @@ export interface RouteVariant {
   getijdeafhankelijk: boolean;
   maxAfmetingen?: MaxDimensions; // permissible dimensions on this route (cm)
   objecten: RouteObject[]; // locks and bridges along the way, in order
+  geometrie?: [number, number][]; // route line as [lon, lat] vertices, decimated for transport
 }
 
 export interface MaxDimensions {
@@ -268,6 +269,8 @@ export interface RouteObject {
   naam: string;
   type: string; // "sluis" | "brug"
   isrs: string;
+  lat?: number; // object position, when EuRIS reports it on the event
+  lon?: number;
 }
 
 export interface Voyage {
@@ -397,6 +400,8 @@ interface EventRecord {
   EventType?: string;
   ObjectName?: string | null;
   ISRS?: string | null;
+  Latitude?: number | null;
+  Longitude?: number | null;
 }
 
 export interface IsrsResolution {
@@ -473,18 +478,36 @@ async function resolveEndpoint(
   return { isrs: r.isrs, naam: r.naam, datagat: r.datagat };
 }
 
+// EuRIS reports the route as a stream of events, each carrying a position. We
+// keep two views: the lock/bridge objects (for the answer) and the full ordered
+// point list (for drawing the route on a map). The point list is decimated and
+// rounded so the geometry stays small enough to travel inside the tool result.
+const ROUTE_GEOMETRY_MAX_POINTS = 120;
+
 function toVariant(itin: Itinerary): RouteVariant {
   const objecten: RouteObject[] = [];
+  const punten: [number, number][] = [];
   for (const leg of itin.Legs ?? []) {
     for (const seg of leg.Segments ?? []) {
       for (const ev of seg.Events ?? []) {
+        const lat = typeof ev.Latitude === "number" ? round5(ev.Latitude) : undefined;
+        const lon = typeof ev.Longitude === "number" ? round5(ev.Longitude) : undefined;
+        if (lat !== undefined && lon !== undefined) {
+          punten.push([lon, lat]);
+        }
         const type = eventKind(ev.EventType);
         if (!type) continue; // only locks and bridges in the object list
         const isrs = clean(ev.ISRS) ?? "";
-        objecten.push({ naam: clean(ev.ObjectName) ?? isrs ?? "onbekend object", type, isrs });
+        objecten.push({
+          naam: clean(ev.ObjectName) ?? isrs ?? "onbekend object",
+          type,
+          isrs,
+          ...(lat !== undefined && lon !== undefined ? { lat, lon } : {}),
+        });
       }
     }
   }
+  const geometrie = decimate(punten, ROUTE_GEOMETRY_MAX_POINTS);
   return {
     type: computationLabel(itin.ComputationType),
     afstandKm: round1((itin.TotalLength ?? 0) / 1000),
@@ -493,7 +516,23 @@ function toVariant(itin: Itinerary): RouteVariant {
     getijdeafhankelijk: itin.TideDependent === true,
     maxAfmetingen: toMaxDimensions(itin.AllowedDimensions),
     objecten,
+    ...(geometrie.length >= 2 ? { geometrie } : {}),
   };
+}
+
+function round5(n: number): number {
+  return Math.round(n * 1e5) / 1e5;
+}
+
+/** Evenly downsample a point list to at most `max`, always keeping first + last. */
+function decimate(points: [number, number][], max: number): [number, number][] {
+  if (points.length <= max) return points;
+  const step = (points.length - 1) / (max - 1);
+  const out: [number, number][] = [];
+  for (let i = 0; i < max; i++) {
+    out.push(points[Math.round(i * step)]!);
+  }
+  return out;
 }
 
 /** Collapse identical itineraries (EuRIS often returns FASTEST == SHORTEST). */
