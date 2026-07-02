@@ -199,8 +199,8 @@ describe("getTideDepartureWindow", () => {
     expect(result.data?.verdict.status).toBe("warn");
     expect(result.data?.candidate_windows[0]).toMatchObject({
       status: "candidate",
-      start: "2026-07-03T03:00:00.000Z",
-      end: "2026-07-03T05:00:00.000Z",
+      start: "2026-07-03T05:00:00+02:00",
+      end: "2026-07-03T07:00:00+02:00",
       label: "Stroom mee op opkomend water",
     });
     expect(result.data?.current_assessment).toMatchObject({

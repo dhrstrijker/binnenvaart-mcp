@@ -624,13 +624,13 @@ function buildHelpfulCurrentWindows(
 
     windows.push({
       status: "candidate",
-      start,
-      end,
+      start: toAmsterdamIso(start),
+      end: toAmsterdamIso(end),
       label: helpfulPhase === "flood" ? "Stroom mee op opkomend water" : "Stroom mee op afgaand water",
       reason:
         helpfulPhase === "flood"
-          ? `Benaderd vanaf 1 uur na laagwater (${current.at}) tot 1 uur voor hoogwater (${next.at}).`
-          : `Benaderd vanaf 1 uur na hoogwater (${current.at}) tot 1 uur voor laagwater (${next.at}).`,
+          ? `Benaderd vanaf 1 uur na laagwater (${toAmsterdamIso(current.at)}) tot 1 uur voor hoogwater (${toAmsterdamIso(next.at)}), NL-tijd.`
+          : `Benaderd vanaf 1 uur na hoogwater (${toAmsterdamIso(current.at)}) tot 1 uur voor laagwater (${toAmsterdamIso(next.at)}), NL-tijd.`,
     });
   }
   return windows.slice(0, 3);
@@ -657,6 +657,30 @@ function explicitDate(req: TideDepartureRequest): string | undefined {
 
 function addHours(iso: string, hours: number): string {
   return new Date(Date.parse(iso) + hours * 60 * 60 * 1000).toISOString();
+}
+
+function toAmsterdamIso(iso: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Amsterdam",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "shortOffset",
+  }).formatToParts(new Date(iso));
+  const value = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}T${value("hour")}:${value("minute")}:${value("second")}${offsetFromShortName(value("timeZoneName"))}`;
+}
+
+function offsetFromShortName(shortName: string): string {
+  const match = shortName.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!match) return "+00:00";
+  const [, sign, hours, minutes = "00"] = match;
+  return `${sign}${hours!.padStart(2, "0")}:${minutes}`;
 }
 
 function routeText(req: TideDepartureRequest, origin: PlanningAnchor, destination: PlanningAnchor): string {
