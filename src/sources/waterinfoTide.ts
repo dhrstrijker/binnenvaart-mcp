@@ -1,5 +1,5 @@
 import { getJson } from "../http/jsonHttp.js";
-import type { Bronregel, Datagat, SourceResult } from "./types.js";
+import type { SourceResult } from "./types.js";
 
 const WATERINFO_BASE_URL = process.env.WATERINFO_BASE_URL ?? "https://waterinfo.rws.nl";
 const ASTRO_TIDE_MAP_TYPE = "astronomische-getij";
@@ -168,7 +168,7 @@ function rawExtrema(points: WaterinfoTidePoint[]): WaterinfoTideExtremum[] {
   const extrema: WaterinfoTideExtremum[] = [];
   let i = 1;
   while (i < points.length - 1) {
-    let start = i;
+    const start = i;
     let end = i;
     const value = points[i]!.value;
     while (end + 1 < points.length && points[end + 1]!.value === value) end += 1;
