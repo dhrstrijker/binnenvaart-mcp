@@ -14,6 +14,7 @@ import {
   getWaterLevel,
   searchObjects,
 } from "../sources/euris.js";
+import { getTideDepartureWindow } from "../sources/tide.js";
 import { guarded } from "./result.js";
 
 /**
@@ -24,7 +25,53 @@ import { guarded } from "./result.js";
  * apart. See docs/adr/0003-stack-mcp-sdk-two-transports-vercel.md.
  */
 export function registerTools(server: McpServer): void {
-  // M0 — trivial smoke-test tool.
+  // M6 — planning primitive for the north-star tide/current departure question.
+  server.registerTool(
+    "tide_departure_window",
+    {
+      title: "Vertrekvenster met tij/stroming en diepgang",
+      description: [
+        "Maak een niet-bindende vertrekvensterbeoordeling voor een route: vertrekpunt, bestemming, datum/venster, diepgang, veiligheidsmarge, stroming/getij en dieptebasis.",
+        "Gebruik dit voor vragen als: wanneer vertrekken zodat de stroom helpt en er genoeg water is?",
+        "Brede plaatsen zoals Europoort, Rotterdam, Amsterdam, Antwerpen, Harlingen en Terschelling zijn geldige planningsankers; vraag niet eerst om een terminalkeuze als EuRIS een haven-/port-area-anker geeft.",
+        "De tool verzint geen stroomrichting, stroomsnelheid, hoogwatermomenten of dieptebasis. Ontbreekt officiële brondata, dan komt er een expliciete blocker met een gedeeltelijke route-/dieptebeoordeling.",
+        "Vergelijk nooit een ruwe waterstand met diepgang; de dieptebeoordeling gebruikt alleen routedimensies of minst gepeilde diepte waar beschikbaar.",
+      ].join(" "),
+      inputSchema: {
+        origin: z.string().optional().describe("Vertrekplaats of ISRS-code, bijvoorbeeld 'Europoort' of 'Harlingen'."),
+        destination: z.string().optional().describe("Bestemming of ISRS-code, bijvoorbeeld 'Amsterdam' of 'Terschelling'."),
+        date_window: z
+          .string()
+          .optional()
+          .describe("Datum of tijdsvenster in lokale tijd of ISO-notatie, bijvoorbeeld 'morgen 04:00-12:00'."),
+        draft_m: z.number().positive().optional().describe("Diepgang van het schip in meter."),
+        safety_margin_m: z
+          .number()
+          .nonnegative()
+          .optional()
+          .describe("Gewenste onder-kielmarge in meter; standaard 0,30 m als dit ontbreekt."),
+        route_hint: z
+          .string()
+          .optional()
+          .describe("Optionele routehint/vaarweg, bijvoorbeeld 'via de Lek' of 'Waddenzee'."),
+        arrival_by: z.string().optional().describe("Optionele uiterste aankomsttijd, liefst ISO met offset."),
+        preferred_departure: z
+          .string()
+          .optional()
+          .describe("Optionele voorgestelde vertrektijd om te beoordelen, liefst ISO met offset."),
+        preference: z
+          .string()
+          .optional()
+          .describe("Optionele voorkeur zoals 'stroom mee', 'fuel', 'hoogwater', 'veiligste diepte'."),
+        context: z
+          .string()
+          .optional()
+          .describe("Korte samenvatting van de vraag, vooral bij algemene ontbrekende-stroomdata-vragen."),
+      },
+    },
+    async (input) => guarded("tide-departure-window-unexpected", () => getTideDepartureWindow(input)),
+  );
+
   server.registerTool(
     "echo",
     {

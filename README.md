@@ -27,6 +27,7 @@ To answer these questions correctly the LLM needs the correct data, which it get
 | `euris_bedieningstijden` | Operating / service times of a lock or bridge for a day or the coming week (when it is and isn't operated). |
 | `euris_zoek` | Resolves a place or object name to ISRS codes — locks, bridges, berths, reporting points — so the model can pin an exact start/end and ask which one you mean. |
 | `euris_route` | A voyage between two points for your ship's dimensions: distance, sailing time, the locks and bridges en route, tide-dependence, and fastest/shortest alternatives — honouring operating hours, tides and active notices. |
+| `tide_departure_window` | Non-binding departure-window assessment for the focused tide/current question: broad planning anchors like Europoort, Rotterdam, Amsterdam, Antwerp, Harlingen or Terschelling; draft + margin; route/depth evidence where available; and explicit blockers when official current direction/speed, high-water extrema or depth basis is missing. Returns `verdict`, `summary`, `route_assumptions`, `candidate_windows`, `current_assessment`, `depth_assessment`, `sources`, `bronregels` and `datagaten`. |
 | `euris_berichten` | Current Notices to Skippers (closures, cautions, works) for a fairway and/or country. |
 | `euris_objectberichten` | Notices to Skippers tied to one specific object (lock, bridge, reporting point) — active and upcoming only. |
 | `euris_routeimpact` | Active NtS impacts geo-anchored to objects (points) and stretches (lines) on a fairway and/or in a country, each with its impact type and any limit value. |
@@ -89,6 +90,8 @@ Every tool returns **normalized data plus its provenance and its gaps**, never a
 
 - `bronregels` — where each value came from (which EuRIS service, observed when), so the model can cite it;
 - `datagaten` — honest "this is missing / stale / ambiguous" markers instead of an invented number.
+
+`tide_departure_window` also returns a structured non-binding `verdict` because departure-window questions need one backend status for the client to explain. It still stays source-grounded: water level is not compared directly with draft, and missing current direction/current speed is a blocker rather than an estimate.
 
 ## Data source & attribution
 
