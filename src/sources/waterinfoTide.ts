@@ -30,6 +30,7 @@ export interface WaterinfoTideSeries {
   observed_at?: string;
   points: WaterinfoTidePoint[];
   extrema: WaterinfoTideExtremum[];
+  extrema_source: "official" | "derived";
   source_url: string;
 }
 
@@ -40,6 +41,7 @@ interface ChartPoint {
 
 interface ChartSeries {
   data?: unknown;
+  extremes?: unknown;
 }
 
 interface ChartResponse {
@@ -97,7 +99,9 @@ export async function getAstronomicalTideSeries(
     };
   }
 
-  const extrema = deriveTideExtrema(points);
+  const officialExtrema = parseOfficialExtrema(chart);
+  const extremaSource = officialExtrema.length >= 2 ? "official" : "derived";
+  const extrema = extremaSource === "official" ? officialExtrema : deriveTideExtrema(points);
   if (extrema.length < 2) {
     return {
       bronregels: [],
@@ -119,6 +123,7 @@ export async function getAstronomicalTideSeries(
     observed_at: typeof chart.t0 === "string" ? chart.t0 : undefined,
     points,
     extrema,
+    extrema_source: extremaSource,
     source_url: url,
   };
 
@@ -128,7 +133,7 @@ export async function getAstronomicalTideSeries(
       {
         source: "Rijkswaterstaat Waterinfo",
         subject: `Astronomisch getij ${stationLabel}`,
-        value: `${points.length} voorspelde waterhoogtepunten; ${extrema.length} afgeleide hoog-/laagwatermomenten t.o.v. ${DEFAULT_REFERENCE_PLANE}`,
+        value: `${points.length} voorspelde waterhoogtepunten; ${extrema.length} ${extremaSource === "official" ? "officiële" : "afgeleide"} hoog-/laagwatermomenten t.o.v. ${DEFAULT_REFERENCE_PLANE}`,
         observedAt: data.observed_at,
         note: "Waterinfo /api/chart/get, kaart astronomische-getij",
       },
@@ -147,6 +152,28 @@ function parseChartPoints(chart: ChartResponse): WaterinfoTidePoint[] {
     }))
     .filter((point) => point.dateTime && Number.isFinite(point.value))
     .sort((a, b) => Date.parse(a.dateTime) - Date.parse(b.dateTime));
+}
+
+function parseOfficialExtrema(chart: ChartResponse): WaterinfoTideExtremum[] {
+  const series = Array.isArray(chart.series) ? (chart.series[0] as ChartSeries | undefined) : undefined;
+  const extremes = Array.isArray(series?.extremes)
+    ? (series.extremes as Array<{ dateTime?: unknown; value?: unknown; sign?: unknown }>)
+    : [];
+  return extremes
+    .map((point) => {
+      const sign = typeof point.sign === "string" ? point.sign.toUpperCase() : "";
+      const type = sign === "HW" ? "high" : sign === "LW" ? "low" : undefined;
+      return {
+        type,
+        at: typeof point.dateTime === "string" ? point.dateTime : "",
+        value_cm: typeof point.value === "number" ? point.value : Number.NaN,
+      };
+    })
+    .filter(
+      (point): point is WaterinfoTideExtremum =>
+        point.type !== undefined && point.at !== "" && Number.isFinite(point.value_cm),
+    )
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 
 export function deriveTideExtrema(points: WaterinfoTidePoint[]): WaterinfoTideExtremum[] {

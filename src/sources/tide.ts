@@ -60,12 +60,15 @@ export interface TideDeparturePlan {
     summary: string;
     route_tide_dependent?: boolean;
     data_needed: string[];
+    coverage?: TideCoverage;
     station?: {
       code: string;
       label: string;
     };
+    stations?: TideStationSummary[];
     method?: string;
     extrema?: WaterinfoTideExtremum[];
+    limitations?: string[];
   };
   depth_assessment: {
     status: "ok" | "warn" | "insufficient" | "missing";
@@ -104,6 +107,11 @@ export interface DepartureWindow {
   end?: string;
   label: string;
   reason: string;
+  station?: {
+    code: string;
+    label: string;
+  };
+  coverage?: TideCoverage;
 }
 
 interface SourceSummary {
@@ -114,11 +122,45 @@ interface SourceSummary {
   note?: string;
 }
 
+type TideCoverage = "single_reference_station" | "departure_station_with_checkpoints";
+
+interface TideStationSummary {
+  code: string;
+  label: string;
+  role: "departure" | "checkpoint" | "reference";
+  helpful_phase: TidePhase;
+  extrema_source?: "official" | "derived";
+  extrema?: WaterinfoTideExtremum[];
+}
+
 interface TideRouteHeuristic {
   stationCode: string;
   stationLabel: string;
   helpfulPhase: TidePhase;
+  stationRole?: TideStationSummary["role"];
+  coverage: TideCoverage;
+  corridorLabel: string;
   method: string;
+  checkpointStations?: TideStationHeuristic[];
+}
+
+interface TideStationHeuristic {
+  stationCode: string;
+  stationLabel: string;
+  helpfulPhase: TidePhase;
+  stationRole: TideStationSummary["role"];
+  method: string;
+}
+
+interface TideStationEstimate {
+  station: {
+    code: string;
+    label: string;
+  };
+  role: TideStationSummary["role"];
+  helpfulPhase: TidePhase;
+  method: string;
+  series: WaterinfoTideSeries;
 }
 
 interface TideCurrentEstimate {
@@ -127,8 +169,11 @@ interface TideCurrentEstimate {
     label: string;
   };
   helpfulPhase: TidePhase;
+  coverage: TideCoverage;
+  corridorLabel: string;
   method: string;
   series: WaterinfoTideSeries;
+  stations: TideStationEstimate[];
   windows: DepartureWindow[];
 }
 
@@ -289,7 +334,7 @@ function basePlan(
           : blocked
             ? "Geen betrouwbaar vertrekvenster uit beschikbare brondata"
             : tideEstimate
-              ? "Benaderd vertrekvenster uit getijvoorspelling"
+              ? "Indicatief vertrekfasevenster bij vertrekpeilplaats"
               : "Vertrekvenster berekend",
       summary,
     },
@@ -335,6 +380,7 @@ function basePlan(
         ? [
             "officiële stroomsnelheid per trajectdeel als verfijning",
             "lokale stroomkentering per trajectdeel als verfijning",
+            "reistijd per route-sectie om peilplaatsvensters met passage tijden te kruisen",
           ]
         : [
             "stroomrichting per relevant trajectdeel",
@@ -343,9 +389,22 @@ function basePlan(
           ],
       ...(tideEstimate
         ? {
+            coverage: tideEstimate.coverage,
             station: tideEstimate.station,
+            stations: tideEstimate.stations.map((station) => ({
+              code: station.station.code,
+              label: station.station.label,
+              role: station.role,
+              helpful_phase: station.helpfulPhase,
+              extrema_source: station.series.extrema_source,
+              extrema: station.series.extrema.slice(0, 4),
+            })),
             method: tideEstimate.method,
             extrema: tideEstimate.series.extrema.slice(0, 6),
+            limitations: [
+              "Dit is een getijbenadering per peilplaats, geen gemeten stroomsnelheid per route-sectie.",
+              "Het vertrekvenster is gebaseerd op de vertrekpeilplaats; route-checkpoints zijn nog niet met verwachte passagetijden doorgerekend.",
+            ],
           }
         : {}),
     },
@@ -503,23 +562,76 @@ async function estimateTideCurrent(
     };
   }
 
-  const tide = await getAstronomicalTideSeries(
-    heuristic.stationCode,
-    heuristic.stationLabel,
-    explicitDate(req),
-  );
-  if (!tide.data) return { bronregels: tide.bronregels, datagaten: tide.datagaten };
+  const stationSpecs = uniqueStationSpecs([
+    {
+      stationCode: heuristic.stationCode,
+      stationLabel: heuristic.stationLabel,
+      helpfulPhase: heuristic.helpfulPhase,
+      stationRole: heuristic.stationRole ?? "reference",
+      method: heuristic.method,
+    },
+    ...(heuristic.checkpointStations ?? []),
+  ]);
+  const bronregels: Bronregel[] = [];
+  const datagaten: Datagat[] = [];
+  const stationEstimates: TideStationEstimate[] = [];
 
-  const windows = buildHelpfulCurrentWindows(tide.data.extrema, heuristic.helpfulPhase);
+  for (const spec of stationSpecs) {
+    const tide = await getAstronomicalTideSeries(spec.stationCode, spec.stationLabel, explicitDate(req));
+    bronregels.push(...tide.bronregels);
+    if (!tide.data) {
+      if (spec.stationRole === "departure" || stationEstimates.length === 0) {
+        return { bronregels, datagaten: [...datagaten, ...tide.datagaten] };
+      }
+      datagaten.push({
+        code: "tide-departure-checkpoint-tide-missing",
+        message: `Geen bruikbare Waterinfo-getijreeks voor checkpoint ${spec.stationLabel}; routebrede verfijning is daardoor onvolledig.`,
+        severity: "caution",
+      });
+      continue;
+    }
+    stationEstimates.push({
+      station: {
+        code: spec.stationCode,
+        label: spec.stationLabel,
+      },
+      role: spec.stationRole,
+      helpfulPhase: spec.helpfulPhase,
+      method: spec.method,
+      series: tide.data,
+    });
+  }
+
+  const primary = stationEstimates.find((station) => station.role === "departure") ?? stationEstimates[0];
+  if (!primary) {
+    return {
+      bronregels,
+      datagaten: [
+        ...datagaten,
+        {
+          code: "tide-departure-waterinfo-station-missing",
+          message:
+            "Geen bruikbare Waterinfo-getijreeks voor de vertrekpeilplaats; zonder vertrekpeilplaats kan geen hoog-/laagwaterregel worden toegepast.",
+          severity: "blocking",
+        },
+      ],
+    };
+  }
+
+  const windows = buildHelpfulCurrentWindows(
+    primary.series.extrema,
+    primary.helpfulPhase,
+    primary.station,
+    heuristic.coverage,
+  );
   if (!windows.length) {
     return {
-      bronregels: tide.bronregels,
+      bronregels,
       datagaten: [
-        ...tide.datagaten,
+        ...datagaten,
         {
           code: "tide-departure-current-window-not-derived",
-          message:
-            "Waterinfo gaf getij-extremen, maar daaruit kon geen bruikbaar mee-stroomvenster worden afgeleid.",
+          message: `Waterinfo gaf getij-extremen voor ${primary.station.label}, maar daaruit kon geen bruikbaar mee-stroomvenster worden afgeleid.`,
           severity: "blocking",
         },
       ],
@@ -529,17 +641,29 @@ async function estimateTideCurrent(
   return {
     data: {
       station: {
-        code: heuristic.stationCode,
-        label: heuristic.stationLabel,
+        code: primary.station.code,
+        label: primary.station.label,
       },
-      helpfulPhase: heuristic.helpfulPhase,
+      helpfulPhase: primary.helpfulPhase,
+      coverage: heuristic.coverage,
+      corridorLabel: heuristic.corridorLabel,
       method: heuristic.method,
-      series: tide.data,
+      series: primary.series,
+      stations: stationEstimates,
       windows,
     },
-    bronregels: tide.bronregels,
-    datagaten: tide.datagaten,
+    bronregels,
+    datagaten,
   };
+}
+
+function uniqueStationSpecs(stations: TideStationHeuristic[]): TideStationHeuristic[] {
+  const seen = new Set<string>();
+  return stations.filter((station) => {
+    if (seen.has(station.stationCode)) return false;
+    seen.add(station.stationCode);
+    return true;
+  });
 }
 
 function selectTideRouteHeuristic(
@@ -558,6 +682,9 @@ function selectTideRouteHeuristic(
     return {
       stationCode: "harlingen.waddenzee",
       stationLabel: "Harlingen, Waddenzee",
+      stationRole: "departure",
+      coverage: "single_reference_station",
+      corridorLabel: "Waddenzee Harlingen",
       helpfulPhase: leavingHarlingen ? "ebb" : "flood",
       method: leavingHarlingen
         ? "Benadering: op de Waddenroute vanaf Harlingen wordt afgaand water na hoogwater als meestroom richting zeegat/eiland behandeld."
@@ -570,6 +697,9 @@ function selectTideRouteHeuristic(
     return {
       stationCode: mentionsAny(text, ["terneuzen", "ghent", "gent"]) ? "terneuzen" : "vlissingen",
       stationLabel: mentionsAny(text, ["terneuzen", "ghent", "gent"]) ? "Terneuzen" : "Vlissingen",
+      stationRole: "departure",
+      coverage: "single_reference_station",
+      corridorLabel: "Westerschelde",
       helpfulPhase: inland ? "flood" : "ebb",
       method:
         "Benadering: op de Westerschelde wordt opkomend water na laagwater als meestroom landinwaarts behandeld; afgaand water na hoogwater als meestroom richting zee.",
@@ -580,12 +710,18 @@ function selectTideRouteHeuristic(
     const inland =
       mentionsAny(to, ["amsterdam", "lek", "dordrecht", "utrecht"]) ||
       mentionsAny(from, ["europoort", "rotterdam"]);
+    const primary = rotterdamCorridorDepartureStation(from, inland);
+    const checkpointStations = rotterdamCorridorCheckpoints(text, from, primary, inland);
     return {
-      stationCode: "hoekvanholland",
-      stationLabel: "Hoek van Holland",
+      stationCode: primary.stationCode,
+      stationLabel: primary.stationLabel,
+      stationRole: "departure",
+      coverage: checkpointStations.length ? "departure_station_with_checkpoints" : "single_reference_station",
+      corridorLabel: "Rotterdamse getijcorridor",
       helpfulPhase: inland ? "flood" : "ebb",
       method:
-        "Benadering: vanaf Europoort/Rotterdam richting binnenwater wordt opkomend water na laagwater bij Hoek van Holland als meestroom behandeld; richting zee juist afgaand water na hoogwater.",
+        "Benadering: gebruik de officiële Waterinfo-getijvoorspelling bij de vertrekpeilplaats en controleer relevante peilplaatsen verderop apart. Opkomend water na laagwater wordt richting binnenwater als gunstige vertrekfase behandeld; afgaand water na hoogwater richting zee.",
+      checkpointStations,
     };
   }
 
@@ -595,6 +731,9 @@ function selectTideRouteHeuristic(
     return {
       stationCode: "ijmuiden.buitenhaven",
       stationLabel: "IJmuiden, buitenhaven",
+      stationRole: "departure",
+      coverage: "single_reference_station",
+      corridorLabel: "Noordzeekanaal/IJmuiden",
       helpfulPhase: inland ? "flood" : "ebb",
       method:
         "Benadering: bij IJmuiden wordt opkomend water na laagwater als meestroom richting Noordzeekanaal/Amsterdam behandeld; afgaand water na hoogwater richting zee.",
@@ -604,9 +743,74 @@ function selectTideRouteHeuristic(
   return undefined;
 }
 
+function rotterdamCorridorDepartureStation(textFrom: string, inland: boolean): TideStationHeuristic {
+  const helpfulPhase: TidePhase = inland ? "flood" : "ebb";
+  if (mentionsAny(textFrom, ["europoort"])) {
+    return {
+      stationCode: "europoort.harmsenbrug",
+      stationLabel: "Europoort, Harmsenbrug",
+      stationRole: "departure",
+      helpfulPhase,
+      method:
+        "Vertrekpeilplaats voor Europoort; gebruik laagwater/hoogwater hier als eerste vertrekfase, niet Hoek van Holland als hele-route proxy.",
+    };
+  }
+  if (mentionsAny(textFrom, ["dordrecht"])) {
+    return {
+      stationCode: "dordrecht.oudemaas.benedenmerwede",
+      stationLabel: "Dordrecht Oude Maas, Beneden Merwede",
+      stationRole: "departure",
+      helpfulPhase,
+      method: "Vertrekpeilplaats bij Dordrecht; gebruik laagwater/hoogwater hier als lokale vertrekfase.",
+    };
+  }
+  return {
+    stationCode: "rotterdam.nieuwemaas.boerengat",
+    stationLabel: "Rotterdam, Nieuwe Maas, Boerengat",
+    stationRole: "departure",
+    helpfulPhase,
+    method:
+      "Vertrekpeilplaats voor Rotterdam/Nieuwe Maas; gebruik laagwater/hoogwater hier als lokale vertrekfase.",
+  };
+}
+
+function rotterdamCorridorCheckpoints(
+  routeTextValue: string,
+  textFrom: string,
+  primary: TideStationHeuristic,
+  inland: boolean,
+): TideStationHeuristic[] {
+  const helpfulPhase: TidePhase = inland ? "flood" : "ebb";
+  const checkpoints: TideStationHeuristic[] = [];
+  if (primary.stationCode !== "rotterdam.nieuwemaas.boerengat") {
+    checkpoints.push({
+      stationCode: "rotterdam.nieuwemaas.boerengat",
+      stationLabel: "Rotterdam, Nieuwe Maas, Boerengat",
+      stationRole: "checkpoint",
+      helpfulPhase,
+      method: "Checkpoint-peilplaats op de Nieuwe Maas; nog niet met passagetijd verrekend.",
+    });
+  }
+  if (
+    mentionsAny(routeTextValue, ["lek", "dordrecht", "merwede", "noord"]) &&
+    primary.stationCode !== "dordrecht.oudemaas.benedenmerwede"
+  ) {
+    checkpoints.push({
+      stationCode: "dordrecht.oudemaas.benedenmerwede",
+      stationLabel: "Dordrecht Oude Maas, Beneden Merwede",
+      stationRole: "checkpoint",
+      helpfulPhase,
+      method: "Checkpoint-peilplaats voor benedenrivieren/Lek-route; nog niet met passagetijd verrekend.",
+    });
+  }
+  return checkpoints;
+}
+
 function buildHelpfulCurrentWindows(
   extrema: WaterinfoTideExtremum[],
   helpfulPhase: TidePhase,
+  station: { code: string; label: string },
+  coverage: TideCoverage,
 ): DepartureWindow[] {
   const windows: DepartureWindow[] = [];
   for (let i = 0; i < extrema.length - 1; i += 1) {
@@ -626,11 +830,16 @@ function buildHelpfulCurrentWindows(
       status: "candidate",
       start: toAmsterdamIso(start),
       end: toAmsterdamIso(end),
-      label: helpfulPhase === "flood" ? "Stroom mee op opkomend water" : "Stroom mee op afgaand water",
+      label:
+        helpfulPhase === "flood"
+          ? `Indicatieve vertrekfase: opkomend water bij ${station.label}`
+          : `Indicatieve vertrekfase: afgaand water bij ${station.label}`,
       reason:
         helpfulPhase === "flood"
-          ? `Benaderd vanaf 1 uur na laagwater (${toAmsterdamIso(current.at)}) tot 1 uur voor hoogwater (${toAmsterdamIso(next.at)}), NL-tijd.`
-          : `Benaderd vanaf 1 uur na hoogwater (${toAmsterdamIso(current.at)}) tot 1 uur voor laagwater (${toAmsterdamIso(next.at)}), NL-tijd.`,
+          ? `Alleen vertrekfase bij ${station.label}: benaderd vanaf 1 uur na laagwater (${toAmsterdamIso(current.at)}) tot 1 uur voor hoogwater (${toAmsterdamIso(next.at)}), NL-tijd. Route-checkpoints moeten apart met passagetijd worden gecontroleerd.`
+          : `Alleen vertrekfase bij ${station.label}: benaderd vanaf 1 uur na hoogwater (${toAmsterdamIso(current.at)}) tot 1 uur voor laagwater (${toAmsterdamIso(next.at)}), NL-tijd. Route-checkpoints moeten apart met passagetijd worden gecontroleerd.`,
+      station,
+      coverage,
     });
   }
   return windows.slice(0, 3);
@@ -646,7 +855,13 @@ function currentSummaryForEstimate(
       : routeTideDependent === false
         ? "De EuRIS-route is niet getijafhankelijk gemarkeerd."
         : "De getijafhankelijkheid van de route is onbekend.";
-  return `${dependency} Geen officiële stroomsnelheid per trajectdeel beschikbaar; gebruikt officiële Waterinfo-voorspelling voor ${estimate.station.label} en een benadering op basis van hoog-/laagwater.`;
+  const checkpoints = estimate.stations
+    .filter((station) => station.role === "checkpoint")
+    .map((station) => station.station.label);
+  const checkpointText = checkpoints.length
+    ? ` Checkpoints met eigen getijvoorspelling: ${checkpoints.join(", ")}.`
+    : "";
+  return `${dependency} Geen officiële stroomsnelheid per trajectdeel beschikbaar; gebruikt officiële Waterinfo-voorspelling voor vertrekpeilplaats ${estimate.station.label} en een hoog-/laagwaterregel.${checkpointText} Dit is geen routebreed optimaal venster zonder passagetijden per sectie.`;
 }
 
 function explicitDate(req: TideDepartureRequest): string | undefined {
@@ -785,10 +1000,10 @@ function verdictSummary(
     return "Herkomst en bestemming ontbreken of zijn niet planbaar; geen vertrekvenster berekend.";
   if (depth.status === "insufficient") return depth.summary;
   if (tideEstimate && depth.status === "ok") {
-    return `Benaderd vertrekvenster beschikbaar via Waterinfo-getijvoorspelling voor ${tideEstimate.station.label}; officiële stroomsnelheid per trajectdeel ontbreekt nog.`;
+    return `Indicatieve vertrekfase beschikbaar via Waterinfo-getijvoorspelling voor vertrekpeilplaats ${tideEstimate.station.label}; officiële stroomsnelheid en sectie-passagetijden ontbreken nog.`;
   }
   if (tideEstimate) {
-    return `Benaderde stroomfase beschikbaar via Waterinfo-getijvoorspelling voor ${tideEstimate.station.label}, maar de dieptebasis is nog niet volledig groen.`;
+    return `Indicatieve vertrekfase beschikbaar via Waterinfo-getijvoorspelling voor vertrekpeilplaats ${tideEstimate.station.label}, maar routebrede stroom- en dieptebeoordeling is nog niet volledig groen.`;
   }
   if (currentMissing && depth.status === "ok") {
     return "Diepgang lijkt binnen de routebasis te passen, maar een vertrekvenster op stroom/getij kan niet betrouwbaar worden gekozen zonder stroomrichting/stroomsnelheid.";
@@ -813,7 +1028,7 @@ function missingCurrentDatagat(): Datagat {
 function approximatedCurrentDatagat(estimate: TideCurrentEstimate): Datagat {
   return {
     code: "tide-departure-current-approximated-from-waterinfo-tide",
-    message: `Geen officiële stroomsnelheid per trajectdeel beschikbaar. De tool gebruikt officiële Waterinfo-getijvoorspelling voor ${estimate.station.label} en een eenvoudige hoog-/laagwaterregel; behandel dit als indicatief.`,
+    message: `Geen officiële stroomsnelheid per trajectdeel beschikbaar. De tool gebruikt officiële Waterinfo-getijvoorspelling voor vertrekpeilplaats ${estimate.station.label} en eventueel checkpoints langs de route; behandel dit als indicatieve vertrekfase, niet als routebreed go/no-go.`,
     severity: "caution",
   };
 }

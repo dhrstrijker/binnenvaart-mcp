@@ -125,7 +125,7 @@ describe("getTideDepartureWindow", () => {
   });
 
   it("derives an indicative with-current window from official Waterinfo tide predictions", async () => {
-    let chartUrl = "";
+    const chartUrls: string[] = [];
     mockFetch((url, init) => {
       const decoded = decodeURIComponent(url);
       if (url.includes("RisIndices") && decoded.includes("Europoort")) {
@@ -161,7 +161,7 @@ describe("getTideDepartureWindow", () => {
         return voyageOk({ AllowedDimensions: { Draught: 520 } });
       }
       if (url.includes("/api/chart/get")) {
-        chartUrl = url;
+        chartUrls.push(url);
         return astroChart([
           ["2026-07-03T00:00:00Z", -40],
           ["2026-07-03T01:00:00Z", -70],
@@ -195,19 +195,35 @@ describe("getTideDepartureWindow", () => {
       preference: "stroom mee",
     });
 
-    expect(decodeURIComponent(chartUrl)).toContain("locationCodes=hoekvanholland");
+    expect(chartUrls.map((url) => decodeURIComponent(url))).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("locationCodes=europoort.harmsenbrug"),
+        expect.stringContaining("locationCodes=rotterdam.nieuwemaas.boerengat"),
+        expect.stringContaining("locationCodes=dordrecht.oudemaas.benedenmerwede"),
+      ]),
+    );
     expect(result.data?.verdict.status).toBe("warn");
     expect(result.data?.candidate_windows[0]).toMatchObject({
       status: "candidate",
       start: "2026-07-03T05:00:00+02:00",
       end: "2026-07-03T07:00:00+02:00",
-      label: "Stroom mee op opkomend water",
+      label: "Indicatieve vertrekfase: opkomend water bij Europoort, Harmsenbrug",
+      station: { code: "europoort.harmsenbrug", label: "Europoort, Harmsenbrug" },
+      coverage: "departure_station_with_checkpoints",
     });
     expect(result.data?.current_assessment).toMatchObject({
       status: "estimated",
-      station: { code: "hoekvanholland", label: "Hoek van Holland" },
+      station: { code: "europoort.harmsenbrug", label: "Europoort, Harmsenbrug" },
+      coverage: "departure_station_with_checkpoints",
     });
-    expect(result.data?.summary).toContain("Benaderd vertrekvenster");
+    expect(result.data?.current_assessment.stations?.map((station) => station.code)).toEqual(
+      expect.arrayContaining([
+        "europoort.harmsenbrug",
+        "rotterdam.nieuwemaas.boerengat",
+        "dordrecht.oudemaas.benedenmerwede",
+      ]),
+    );
+    expect(result.data?.summary).toContain("Indicatieve vertrekfase");
     expect(result.datagaten.map((d) => d.code)).toContain(
       "tide-departure-current-approximated-from-waterinfo-tide",
     );
