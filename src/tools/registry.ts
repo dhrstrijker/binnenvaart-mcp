@@ -34,7 +34,7 @@ export function registerTools(server: McpServer): void {
         "Maak een niet-bindende vertrekvensterbeoordeling voor een route: vertrekpunt, bestemming, datum/venster, diepgang, veiligheidsmarge, stroming/getij en dieptebasis.",
         "Gebruik dit voor vragen als: wanneer vertrekken zodat de stroom helpt en er genoeg water is?",
         "Brede plaatsen zoals Europoort, Rotterdam, Amsterdam, Antwerpen, Harlingen en Terschelling zijn geldige planningsankers; vraag niet eerst om een terminalkeuze als EuRIS een haven-/port-area-anker geeft.",
-        "De tool verzint geen stroomrichting, stroomsnelheid, hoogwatermomenten of dieptebasis. Ontbreekt officiële brondata, dan komt er een expliciete blocker met een gedeeltelijke route-/dieptebeoordeling.",
+        "De tool gebruikt officiële Waterinfo astronomisch-getijvoorspellingen waar een route aan een getijstation te koppelen is; echte stroomsnelheid blijft expliciet als waarschuwing/datagat. Ontbreekt ook die getijbasis, dan komt er een blocker met gedeeltelijke route-/dieptebeoordeling.",
         "Vergelijk nooit een ruwe waterstand met diepgang; de dieptebeoordeling gebruikt alleen routedimensies of minst gepeilde diepte waar beschikbaar.",
       ].join(" "),
       inputSchema: {

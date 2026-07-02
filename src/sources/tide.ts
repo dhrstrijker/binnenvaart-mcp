@@ -7,6 +7,12 @@ import {
   type ShipDimensions,
   type Voyage,
 } from "./euris.js";
+import {
+  getAstronomicalTideSeries,
+  type TidePhase,
+  type WaterinfoTideExtremum,
+  type WaterinfoTideSeries,
+} from "./waterinfoTide.js";
 
 const ISRS_PATTERN = /^[A-Z]{2}[A-Z0-9]{18}$/;
 const DEFAULT_MARGIN_M = 0.3;
@@ -50,10 +56,16 @@ export interface TideDeparturePlan {
   };
   candidate_windows: DepartureWindow[];
   current_assessment: {
-    status: "missing" | "not_tidal" | "partial";
+    status: "missing" | "not_tidal" | "partial" | "estimated";
     summary: string;
     route_tide_dependent?: boolean;
     data_needed: string[];
+    station?: {
+      code: string;
+      label: string;
+    };
+    method?: string;
+    extrema?: WaterinfoTideExtremum[];
   };
   depth_assessment: {
     status: "ok" | "warn" | "insufficient" | "missing";
@@ -100,6 +112,24 @@ interface SourceSummary {
   value: string;
   observedAt?: string;
   note?: string;
+}
+
+interface TideRouteHeuristic {
+  stationCode: string;
+  stationLabel: string;
+  helpfulPhase: TidePhase;
+  method: string;
+}
+
+interface TideCurrentEstimate {
+  station: {
+    code: string;
+    label: string;
+  };
+  helpfulPhase: TidePhase;
+  method: string;
+  series: WaterinfoTideSeries;
+  windows: DepartureWindow[];
 }
 
 export async function getTideDepartureWindow(
@@ -154,8 +184,23 @@ export async function getTideDepartureWindow(
   }
 
   const variant = voyage?.varianten[0];
-  datagaten.push(missingCurrentDatagat());
-  if (wantsHighWater(req)) datagaten.push(missingHighWaterDatagat());
+  let tideEstimate: TideCurrentEstimate | undefined;
+  if (origin.anchor && destination.anchor) {
+    const estimate = await estimateTideCurrent(req, origin.anchor, destination.anchor);
+    if (estimate.data) {
+      tideEstimate = estimate.data;
+      bronregels.push(...estimate.bronregels);
+      datagaten.push(...estimate.datagaten);
+      datagaten.push(approximatedCurrentDatagat(tideEstimate));
+    } else {
+      datagaten.push(...estimate.datagaten);
+      datagaten.push(missingCurrentDatagat());
+      if (wantsHighWater(req)) datagaten.push(missingHighWaterDatagat());
+    }
+  } else {
+    datagaten.push(missingCurrentDatagat());
+    if (wantsHighWater(req)) datagaten.push(missingHighWaterDatagat());
+  }
   if (draftM === undefined) {
     datagaten.push({
       code: "tide-departure-draft-missing",
@@ -189,6 +234,7 @@ export async function getTideDepartureWindow(
     voyage,
     datagaten,
     dataBoundaries,
+    tideEstimate,
   );
   const plannerBronregel: Bronregel = {
     source: "Binnenvaart MCP",
@@ -211,6 +257,7 @@ function basePlan(
   voyage: Voyage | undefined,
   datagaten: Datagat[],
   dataBoundaries: string[],
+  tideEstimate?: TideCurrentEstimate,
 ): TideDeparturePlan {
   const variant = voyage?.varianten[0];
   const depth = depthAssessment(variant, requiredDepthM, safetyMarginM);
@@ -221,9 +268,16 @@ function basePlan(
   const routeMissing = datagaten.some((gap) => gap.code === "tide-departure-route-missing");
   const depthBlocking = depth.status === "missing" || depth.status === "insufficient";
   const blocked = routeMissing || currentMissing || depthBlocking;
+  const hasCaution = dataBoundaries.length > 0 || tideEstimate !== undefined;
   const status =
-    depth.status === "insufficient" ? "stop" : blocked ? "blocked" : depth.status === "warn" ? "warn" : "go";
-  const summary = verdictSummary(req, currentMissing, depth, routeMissing);
+    depth.status === "insufficient"
+      ? "stop"
+      : blocked
+        ? "blocked"
+        : depth.status === "warn" || hasCaution
+          ? "warn"
+          : "go";
+  const summary = verdictSummary(req, currentMissing, depth, routeMissing, tideEstimate);
 
   return {
     summary,
@@ -234,7 +288,9 @@ function basePlan(
           ? "Niet vertrekken op basis van de beschikbare dieptebasis"
           : blocked
             ? "Geen betrouwbaar vertrekvenster uit beschikbare brondata"
-            : "Vertrekvenster berekend",
+            : tideEstimate
+              ? "Benaderd vertrekvenster uit getijvoorspelling"
+              : "Vertrekvenster berekend",
       summary,
     },
     route_assumptions: {
@@ -252,30 +308,46 @@ function basePlan(
       preference: req.preference,
     },
     candidate_windows:
-      status === "blocked" || status === "stop"
-        ? [
-            {
-              status: "blocked",
-              label: status === "stop" ? "Niet vertrekken" : "Geen vertrekadvies",
-              reason:
-                status === "stop"
-                  ? depth.summary
-                  : "Officiële stroomrichting/stroomsnelheid en/of een bruikbare dieptebasis ontbreekt; geef geen tijdvenster op basis van aannames.",
-              ...(req.preferred_departure
-                ? { start: req.preferred_departure, end: req.preferred_departure }
-                : {}),
-            },
-          ]
-        : [],
+      tideEstimate && status !== "stop"
+        ? tideEstimate.windows
+        : status === "blocked" || status === "stop"
+          ? [
+              {
+                status: "blocked",
+                label: status === "stop" ? "Niet vertrekken" : "Geen vertrekadvies",
+                reason:
+                  status === "stop"
+                    ? depth.summary
+                    : "Officiële stroomrichting/stroomsnelheid en/of een bruikbare dieptebasis ontbreekt; geef geen tijdvenster op basis van aannames.",
+                ...(req.preferred_departure
+                  ? { start: req.preferred_departure, end: req.preferred_departure }
+                  : {}),
+              },
+            ]
+          : [],
     current_assessment: {
-      status: routeTideDependent === false ? "not_tidal" : "missing",
-      summary: currentSummaryFor(routeTideDependent, req),
+      status: tideEstimate ? "estimated" : routeTideDependent === false ? "not_tidal" : "missing",
+      summary: tideEstimate
+        ? currentSummaryForEstimate(tideEstimate, routeTideDependent)
+        : currentSummaryFor(routeTideDependent, req),
       route_tide_dependent: routeTideDependent,
-      data_needed: [
-        "stroomrichting per relevant trajectdeel",
-        "stroomsnelheid of getijraam per relevant trajectdeel",
-        "tijdstempels en herkomst van die stroomdata",
-      ],
+      data_needed: tideEstimate
+        ? [
+            "officiële stroomsnelheid per trajectdeel als verfijning",
+            "lokale stroomkentering per trajectdeel als verfijning",
+          ]
+        : [
+            "stroomrichting per relevant trajectdeel",
+            "stroomsnelheid of getijraam per relevant trajectdeel",
+            "tijdstempels en herkomst van die stroomdata",
+          ],
+      ...(tideEstimate
+        ? {
+            station: tideEstimate.station,
+            method: tideEstimate.method,
+            extrema: tideEstimate.series.extrema.slice(0, 6),
+          }
+        : {}),
     },
     depth_assessment: depth,
     ...(variant
@@ -411,6 +483,208 @@ function isAreaType(type: string): boolean {
   );
 }
 
+async function estimateTideCurrent(
+  req: TideDepartureRequest,
+  origin: PlanningAnchor,
+  destination: PlanningAnchor,
+): Promise<SourceResult<TideCurrentEstimate>> {
+  const heuristic = selectTideRouteHeuristic(req, origin, destination);
+  if (!heuristic) {
+    return {
+      bronregels: [],
+      datagaten: [
+        {
+          code: "tide-departure-waterinfo-station-missing",
+          message:
+            "Geen gekoppeld Rijkswaterstaat Waterinfo-getijstation voor deze route. Zonder station kan ook geen benaderde stroomfase uit hoog-/laagwater worden gebruikt.",
+          severity: "blocking",
+        },
+      ],
+    };
+  }
+
+  const tide = await getAstronomicalTideSeries(
+    heuristic.stationCode,
+    heuristic.stationLabel,
+    explicitDate(req),
+  );
+  if (!tide.data) return { bronregels: tide.bronregels, datagaten: tide.datagaten };
+
+  const windows = buildHelpfulCurrentWindows(tide.data.extrema, heuristic.helpfulPhase);
+  if (!windows.length) {
+    return {
+      bronregels: tide.bronregels,
+      datagaten: [
+        ...tide.datagaten,
+        {
+          code: "tide-departure-current-window-not-derived",
+          message:
+            "Waterinfo gaf getij-extremen, maar daaruit kon geen bruikbaar mee-stroomvenster worden afgeleid.",
+          severity: "blocking",
+        },
+      ],
+    };
+  }
+
+  return {
+    data: {
+      station: {
+        code: heuristic.stationCode,
+        label: heuristic.stationLabel,
+      },
+      helpfulPhase: heuristic.helpfulPhase,
+      method: heuristic.method,
+      series: tide.data,
+      windows,
+    },
+    bronregels: tide.bronregels,
+    datagaten: tide.datagaten,
+  };
+}
+
+function selectTideRouteHeuristic(
+  req: TideDepartureRequest,
+  origin: PlanningAnchor,
+  destination: PlanningAnchor,
+): TideRouteHeuristic | undefined {
+  const text = routeText(req, origin, destination);
+  const from = anchorText(origin);
+  const to = anchorText(destination);
+
+  if (mentionsAny(text, ["harlingen", "terschelling", "vlieland", "ameland", "waddenzee"])) {
+    const leavingHarlingen =
+      mentionsAny(from, ["harlingen"]) &&
+      mentionsAny(to, ["terschelling", "vlieland", "ameland", "waddenzee"]);
+    return {
+      stationCode: "harlingen.waddenzee",
+      stationLabel: "Harlingen, Waddenzee",
+      helpfulPhase: leavingHarlingen ? "ebb" : "flood",
+      method: leavingHarlingen
+        ? "Benadering: op de Waddenroute vanaf Harlingen wordt afgaand water na hoogwater als meestroom richting zeegat/eiland behandeld."
+        : "Benadering: rond Harlingen wordt opkomend water na laagwater als meestroom richting haven/landinwaarts behandeld.",
+    };
+  }
+
+  if (mentionsAny(text, ["vlissingen", "terneuzen", "schelde", "antwerp", "antwerpen", "ghent", "gent"])) {
+    const inland = mentionsAny(to, ["antwerp", "antwerpen", "ghent", "gent", "terneuzen"]);
+    return {
+      stationCode: mentionsAny(text, ["terneuzen", "ghent", "gent"]) ? "terneuzen" : "vlissingen",
+      stationLabel: mentionsAny(text, ["terneuzen", "ghent", "gent"]) ? "Terneuzen" : "Vlissingen",
+      helpfulPhase: inland ? "flood" : "ebb",
+      method:
+        "Benadering: op de Westerschelde wordt opkomend water na laagwater als meestroom landinwaarts behandeld; afgaand water na hoogwater als meestroom richting zee.",
+    };
+  }
+
+  if (mentionsAny(text, ["europoort", "rotterdam", "nieuwe waterweg", "nieuwe maas", "lek", "dordrecht"])) {
+    const inland =
+      mentionsAny(to, ["amsterdam", "lek", "dordrecht", "utrecht"]) ||
+      mentionsAny(from, ["europoort", "rotterdam"]);
+    return {
+      stationCode: "hoekvanholland",
+      stationLabel: "Hoek van Holland",
+      helpfulPhase: inland ? "flood" : "ebb",
+      method:
+        "Benadering: vanaf Europoort/Rotterdam richting binnenwater wordt opkomend water na laagwater bij Hoek van Holland als meestroom behandeld; richting zee juist afgaand water na hoogwater.",
+    };
+  }
+
+  if (mentionsAny(text, ["ijmuiden", "noordzeekanaal"])) {
+    const inland =
+      mentionsAny(to, ["amsterdam", "zaandam", "noordzeekanaal"]) && !mentionsAny(to, ["ijmuiden"]);
+    return {
+      stationCode: "ijmuiden.buitenhaven",
+      stationLabel: "IJmuiden, buitenhaven",
+      helpfulPhase: inland ? "flood" : "ebb",
+      method:
+        "Benadering: bij IJmuiden wordt opkomend water na laagwater als meestroom richting Noordzeekanaal/Amsterdam behandeld; afgaand water na hoogwater richting zee.",
+    };
+  }
+
+  return undefined;
+}
+
+function buildHelpfulCurrentWindows(
+  extrema: WaterinfoTideExtremum[],
+  helpfulPhase: TidePhase,
+): DepartureWindow[] {
+  const windows: DepartureWindow[] = [];
+  for (let i = 0; i < extrema.length - 1; i += 1) {
+    const current = extrema[i]!;
+    const next = extrema[i + 1]!;
+    const matches =
+      helpfulPhase === "flood"
+        ? current.type === "low" && next.type === "high"
+        : current.type === "high" && next.type === "low";
+    if (!matches) continue;
+
+    const start = addHours(current.at, 1);
+    const end = addHours(next.at, -1);
+    if (Date.parse(start) >= Date.parse(end)) continue;
+
+    windows.push({
+      status: "candidate",
+      start,
+      end,
+      label: helpfulPhase === "flood" ? "Stroom mee op opkomend water" : "Stroom mee op afgaand water",
+      reason:
+        helpfulPhase === "flood"
+          ? `Benaderd vanaf 1 uur na laagwater (${current.at}) tot 1 uur voor hoogwater (${next.at}).`
+          : `Benaderd vanaf 1 uur na hoogwater (${current.at}) tot 1 uur voor laagwater (${next.at}).`,
+    });
+  }
+  return windows.slice(0, 3);
+}
+
+function currentSummaryForEstimate(
+  estimate: TideCurrentEstimate,
+  routeTideDependent: boolean | undefined,
+): string {
+  const dependency =
+    routeTideDependent === true
+      ? "De EuRIS-route is getijafhankelijk gemarkeerd."
+      : routeTideDependent === false
+        ? "De EuRIS-route is niet getijafhankelijk gemarkeerd."
+        : "De getijafhankelijkheid van de route is onbekend.";
+  return `${dependency} Geen officiële stroomsnelheid per trajectdeel beschikbaar; gebruikt officiële Waterinfo-voorspelling voor ${estimate.station.label} en een benadering op basis van hoog-/laagwater.`;
+}
+
+function explicitDate(req: TideDepartureRequest): string | undefined {
+  const value = req.date ?? req.date_window ?? req.window;
+  const match = value?.match(/\d{4}-\d{2}-\d{2}/);
+  return match?.[0];
+}
+
+function addHours(iso: string, hours: number): string {
+  return new Date(Date.parse(iso) + hours * 60 * 60 * 1000).toISOString();
+}
+
+function routeText(req: TideDepartureRequest, origin: PlanningAnchor, destination: PlanningAnchor): string {
+  return normalize(
+    [
+      req.origin,
+      req.destination,
+      req.route_hint,
+      req.preference,
+      req.context,
+      anchorText(origin),
+      anchorText(destination),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+}
+
+function anchorText(anchor: PlanningAnchor): string {
+  return normalize(
+    [anchor.naam, anchor.type, anchor.vaarweg, anchor.plaats, anchor.land].filter(Boolean).join(" "),
+  );
+}
+
+function mentionsAny(text: string, needles: string[]): boolean {
+  return needles.some((needle) => text.includes(needle));
+}
+
 function depthAssessment(
   variant: RouteVariant | undefined,
   requiredDepthM: number | undefined,
@@ -481,10 +755,17 @@ function verdictSummary(
   currentMissing: boolean,
   depth: TideDeparturePlan["depth_assessment"],
   routeMissing: boolean,
+  tideEstimate?: TideCurrentEstimate,
 ): string {
   if (routeMissing)
     return "Herkomst en bestemming ontbreken of zijn niet planbaar; geen vertrekvenster berekend.";
   if (depth.status === "insufficient") return depth.summary;
+  if (tideEstimate && depth.status === "ok") {
+    return `Benaderd vertrekvenster beschikbaar via Waterinfo-getijvoorspelling voor ${tideEstimate.station.label}; officiële stroomsnelheid per trajectdeel ontbreekt nog.`;
+  }
+  if (tideEstimate) {
+    return `Benaderde stroomfase beschikbaar via Waterinfo-getijvoorspelling voor ${tideEstimate.station.label}, maar de dieptebasis is nog niet volledig groen.`;
+  }
   if (currentMissing && depth.status === "ok") {
     return "Diepgang lijkt binnen de routebasis te passen, maar een vertrekvenster op stroom/getij kan niet betrouwbaar worden gekozen zonder stroomrichting/stroomsnelheid.";
   }
@@ -502,6 +783,14 @@ function missingCurrentDatagat(): Datagat {
     message:
       "Geen officiële stroomrichting/stroomsnelheid per trajectdeel beschikbaar in deze toolrespons. Gebruik waterstand/hoogwater niet als vervanging voor stroom mee of tegen.",
     severity: "blocking",
+  };
+}
+
+function approximatedCurrentDatagat(estimate: TideCurrentEstimate): Datagat {
+  return {
+    code: "tide-departure-current-approximated-from-waterinfo-tide",
+    message: `Geen officiële stroomsnelheid per trajectdeel beschikbaar. De tool gebruikt officiële Waterinfo-getijvoorspelling voor ${estimate.station.label} en een eenvoudige hoog-/laagwaterregel; behandel dit als indicatief.`,
+    severity: "caution",
   };
 }
 

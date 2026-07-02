@@ -43,6 +43,22 @@ function voyageOk(over: Record<string, unknown> = {}) {
   };
 }
 
+function astroChart(points: Array<[string, number]>) {
+  return {
+    t0: "2026-07-02T22:00:00Z",
+    series: [
+      {
+        unit: "cm",
+        data: points.map(([dateTime, value]) => ({ dateTime, value, min: null, max: null, sign: null })),
+      },
+    ],
+    fanBandSeries: [],
+    limits: [],
+    extremesY: { min: -100, max: 130 },
+    isCombined: false,
+  };
+}
+
 describe("getTideDepartureWindow", () => {
   it("uses a broad port-area planning anchor instead of forcing terminal selection", async () => {
     let routeBody: Record<string, unknown> | undefined;
@@ -106,6 +122,98 @@ describe("getTideDepartureWindow", () => {
     });
     expect(routeBody?.StartISRS).toBe(EUROPOORT_AREA);
     expect(result.bronregels.some((b) => b.subject.includes("Planninganker origin"))).toBe(true);
+  });
+
+  it("derives an indicative with-current window from official Waterinfo tide predictions", async () => {
+    let chartUrl = "";
+    mockFetch((url, init) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Europoort")) {
+        return {
+          items: [
+            {
+              isrs: EUROPOORT_AREA,
+              nationalObjectName: "Europoort",
+              functionMessage: "Port Area",
+              fairwayName: "Nieuwe Waterweg",
+              locationName: "Rotterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Amsterdam")) {
+        return {
+          items: [
+            {
+              isrs: AMSTERDAM_AREA,
+              nationalObjectName: "Amsterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Noordzeekanaal",
+              locationName: "Amsterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        JSON.parse(String(init?.body));
+        return voyageOk({ AllowedDimensions: { Draught: 520 } });
+      }
+      if (url.includes("/api/chart/get")) {
+        chartUrl = url;
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T01:00:00Z", -70],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T03:00:00Z", -60],
+          ["2026-07-03T04:00:00Z", 0],
+          ["2026-07-03T05:00:00Z", 80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T07:00:00Z", 100],
+          ["2026-07-03T08:00:00Z", 40],
+          ["2026-07-03T09:00:00Z", -10],
+          ["2026-07-03T10:00:00Z", -50],
+          ["2026-07-03T11:00:00Z", -70],
+          ["2026-07-03T12:00:00Z", -60],
+          ["2026-07-03T13:00:00Z", -20],
+          ["2026-07-03T14:00:00Z", 70],
+          ["2026-07-03T15:00:00Z", 100],
+          ["2026-07-03T16:00:00Z", 90],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Europoort",
+      destination: "Amsterdam",
+      route_hint: "Lek",
+      date: "2026-07-03",
+      draft_m: 4.5,
+      safety_margin_m: 0.3,
+      preference: "stroom mee",
+    });
+
+    expect(decodeURIComponent(chartUrl)).toContain("locationCodes=hoekvanholland");
+    expect(result.data?.verdict.status).toBe("warn");
+    expect(result.data?.candidate_windows[0]).toMatchObject({
+      status: "candidate",
+      start: "2026-07-03T03:00:00.000Z",
+      end: "2026-07-03T05:00:00.000Z",
+      label: "Stroom mee op opkomend water",
+    });
+    expect(result.data?.current_assessment).toMatchObject({
+      status: "estimated",
+      station: { code: "hoekvanholland", label: "Hoek van Holland" },
+    });
+    expect(result.data?.summary).toContain("Benaderd vertrekvenster");
+    expect(result.datagaten.map((d) => d.code)).toContain(
+      "tide-departure-current-approximated-from-waterinfo-tide",
+    );
+    expect(result.datagaten.map((d) => d.code)).not.toContain(
+      "tide-departure-current-direction-speed-missing",
+    );
   });
 
   it("returns a structured blocked partial plan when current direction and speed are missing", async () => {
