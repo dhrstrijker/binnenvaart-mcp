@@ -52,7 +52,13 @@ export function registerTools(server: McpServer): void {
           .describe(
             "Datum of tijdsvenster in lokale tijd of ISO-notatie, bijvoorbeeld 'morgen 04:00-12:00'.",
           ),
-        draft_m: z.number().positive().optional().describe("Diepgang van het schip in meter."),
+        draft_m: z
+          .number()
+          .positive()
+          .optional()
+          .describe(
+            "Diepgang van het schip in meter. Alleen invullen als de gebruiker expliciet een numerieke diepgang noemt; woorden zoals 'vol' zijn geen diepgang.",
+          ),
         safety_margin_m: z
           .number()
           .nonnegative()

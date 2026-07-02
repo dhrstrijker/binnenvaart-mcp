@@ -57,6 +57,14 @@ describe("getTideDepartureWindow", () => {
       if (url.includes("RisIndices") && url.includes("Amsterdam")) {
         return searchPage([
           {
+            isrs: "NLAMS002122270700076",
+            nationalObjectName: "Haven WV De Koenen Amsterdam",
+            functionMessage: "Harbour Basin",
+            nationalFairwayName: "Nieuwe Meer",
+            locationName: "Amsterdam",
+            countryCode: "NL",
+          },
+          {
             isrs: AMSTERDAM_PORT,
             nationalObjectName: "AMSTERDAM (NLAMS)",
             functionMessage: "Port Area",
@@ -138,5 +146,39 @@ describe("getTideDepartureWindow", () => {
     expect(result.data?.depth_assessment.required_depth_m).toBe(4.8);
     expect(result.data?.depth_assessment.allowed_draught_m).toBe(4.65);
     expect(result.data?.verdict.status).toBe("stop");
+  });
+
+  it("ignores implausibly tiny model-inferred draft values", async () => {
+    mockFetch((url) => {
+      if (url.includes("RisIndices") && url.includes("Europoort")) {
+        return searchPage([
+          {
+            isrs: EUROPOORT_PORT,
+            nationalObjectName: "Europoort",
+            functionMessage: "Port Area",
+          },
+        ]);
+      }
+      if (url.includes("RisIndices") && url.includes("Amsterdam")) {
+        return searchPage([
+          {
+            isrs: AMSTERDAM_PORT,
+            nationalObjectName: "AMSTERDAM (NLAMS)",
+            functionMessage: "Port Area",
+          },
+        ]);
+      }
+      return routeOk(250);
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Europoort",
+      destination: "Amsterdam",
+      draft_m: 0.0002,
+    });
+
+    expect(result.data?.route_assumptions.draft_m).toBeUndefined();
+    expect(result.data?.depth_assessment.status).toBe("missing");
+    expect(result.datagaten.map((gap) => gap.code)).toContain("tide-departure-draft-implausible");
   });
 });

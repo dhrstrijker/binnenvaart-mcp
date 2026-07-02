@@ -10,6 +10,7 @@ import {
 
 const ISRS_PATTERN = /^[A-Z]{2}[A-Z0-9]{18}$/;
 const DEFAULT_MARGIN_M = 0.3;
+const MIN_PLAUSIBLE_DRAFT_M = 0.2;
 
 export interface TideDepartureRequest {
   origin?: string;
@@ -105,10 +106,19 @@ export async function getTideDepartureWindow(
   req: TideDepartureRequest,
 ): Promise<SourceResult<TideDeparturePlan>> {
   const safetyMarginM = positive(req.safety_margin_m) ?? DEFAULT_MARGIN_M;
-  const draftM = positive(req.draft_m);
+  const draftM = plausibleDraft(req.draft_m);
   const requiredDepthM = draftM !== undefined ? round2(draftM + safetyMarginM) : undefined;
   const bronregels: Bronregel[] = [];
   const datagaten: Datagat[] = [];
+
+  if (req.draft_m !== undefined && draftM === undefined) {
+    datagaten.push({
+      code: "tide-departure-draft-implausible",
+      message:
+        "De opgegeven diepgang is niet plausibel als scheepsdiepgang in meters. Gebruik alleen een expliciet numerieke diepgang, bijvoorbeeld 4.5 m; woorden zoals 'vol' zijn geen diepgang.",
+      severity: "caution",
+    });
+  }
 
   if (!req.origin || !req.destination) {
     datagaten.push({
@@ -233,7 +243,7 @@ function basePlan(
       ...(origin ? { origin_anchor: origin } : {}),
       ...(destination ? { destination_anchor: destination } : {}),
       date_window: req.date_window ?? req.window ?? req.date,
-      draft_m: positive(req.draft_m),
+      draft_m: plausibleDraft(req.draft_m),
       safety_margin_m: safetyMarginM,
       required_depth_m: requiredDepthM,
       route_hint: req.route_hint,
@@ -367,11 +377,13 @@ function planningAnchorScore(candidate: ObjectCandidate, query: string): number 
   const fairway = normalize(candidate.vaarweg ?? "");
   let score = 0;
   if (name === query) score += 100;
+  else if (name === `${query} (${candidate.isrs.slice(0, 5).toLowerCase()})`) score += 95;
   else if (name.startsWith(query)) score += 45;
   else if (name.includes(query)) score += 20;
   if (place === query) score += 30;
   if (fairway === query) score += 20;
-  if (isAreaType(type)) score += 80;
+  if (type.includes("port area")) score += 120;
+  else if (type.includes("harbour") || type.includes("harbor") || type.includes("basin")) score += 70;
   if (type.includes("terminal")) score += 5;
   if (type.includes("bridge") || type.includes("lock")) score -= 15;
   if (type.includes("notification") || type.includes("dead end")) score -= 80;
@@ -533,6 +545,11 @@ function toSourceSummary(source: Bronregel): SourceSummary {
 
 function positive(value: number | undefined): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function plausibleDraft(value: number | undefined): number | undefined {
+  const draft = positive(value);
+  return draft !== undefined && draft >= MIN_PLAUSIBLE_DRAFT_M ? draft : undefined;
 }
 
 function round2(n: number): number {
