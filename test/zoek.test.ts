@@ -36,7 +36,11 @@ describe("searchObjects", () => {
       calledUrl = url;
       return {
         items: [
-          { isrs: "NLLNT001010798600259", nationalObjectName: "Spoorbrug Nijmegen (Waal)", functionMessage: "Bridge Area" },
+          {
+            isrs: "NLLNT001010798600259",
+            nationalObjectName: "Spoorbrug Nijmegen (Waal)",
+            functionMessage: "Bridge Area",
+          },
         ],
       };
     });
@@ -50,10 +54,28 @@ describe("searchObjects", () => {
     // The order the RIS index actually returns "Maashaven" in: junk first.
     mockJson({
       items: [
-        { isrs: "J1", nationalObjectName: "junction : Nieuwe Maas - Maashaven", functionMessage: "Dead end / end of waterway" },
-        { isrs: "Z1", nationalObjectName: "Maashaven te Zwijndrecht", functionMessage: "Harbour Basin", nationalFairwayName: "Oude Maas" },
-        { isrs: "M1", nationalObjectName: "Meldpunt Maashaven", functionMessage: "Radio Calling Point (notification point)" },
-        { isrs: "R1", nationalObjectName: "Maashaven te Rotterdam", functionMessage: "Harbour Basin", nationalFairwayName: "Maashaven" },
+        {
+          isrs: "J1",
+          nationalObjectName: "junction : Nieuwe Maas - Maashaven",
+          functionMessage: "Dead end / end of waterway",
+        },
+        {
+          isrs: "Z1",
+          nationalObjectName: "Maashaven te Zwijndrecht",
+          functionMessage: "Harbour Basin",
+          nationalFairwayName: "Oude Maas",
+        },
+        {
+          isrs: "M1",
+          nationalObjectName: "Meldpunt Maashaven",
+          functionMessage: "Radio Calling Point (notification point)",
+        },
+        {
+          isrs: "R1",
+          nationalObjectName: "Maashaven te Rotterdam",
+          functionMessage: "Harbour Basin",
+          nationalFairwayName: "Maashaven",
+        },
       ],
     });
     const r = await searchObjects("Maashaven");

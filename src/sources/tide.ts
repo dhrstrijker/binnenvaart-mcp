@@ -101,7 +101,9 @@ interface SourceSummary {
   note?: string;
 }
 
-export async function getTideDepartureWindow(req: TideDepartureRequest): Promise<SourceResult<TideDeparturePlan>> {
+export async function getTideDepartureWindow(
+  req: TideDepartureRequest,
+): Promise<SourceResult<TideDeparturePlan>> {
   const safetyMarginM = positive(req.safety_margin_m) ?? DEFAULT_MARGIN_M;
   const draftM = positive(req.draft_m);
   const requiredDepthM = draftM !== undefined ? round2(draftM + safetyMarginM) : undefined;
@@ -209,7 +211,8 @@ function basePlan(
   const routeMissing = datagaten.some((gap) => gap.code === "tide-departure-route-missing");
   const depthBlocking = depth.status === "missing" || depth.status === "insufficient";
   const blocked = routeMissing || currentMissing || depthBlocking;
-  const status = depth.status === "insufficient" ? "stop" : blocked ? "blocked" : depth.status === "warn" ? "warn" : "go";
+  const status =
+    depth.status === "insufficient" ? "stop" : blocked ? "blocked" : depth.status === "warn" ? "warn" : "go";
   const summary = verdictSummary(req, currentMissing, depth, routeMissing);
 
   return {
@@ -248,7 +251,9 @@ function basePlan(
                 status === "stop"
                   ? depth.summary
                   : "Officiële stroomrichting/stroomsnelheid en/of een bruikbare dieptebasis ontbreekt; geef geen tijdvenster op basis van aannames.",
-              ...(req.preferred_departure ? { start: req.preferred_departure, end: req.preferred_departure } : {}),
+              ...(req.preferred_departure
+                ? { start: req.preferred_departure, end: req.preferred_departure }
+                : {}),
             },
           ]
         : [],
@@ -386,7 +391,12 @@ function planningAnchorConfidence(
 }
 
 function isAreaType(type: string): boolean {
-  return type.includes("port area") || type.includes("harbour") || type.includes("harbor") || type.includes("basin");
+  return (
+    type.includes("port area") ||
+    type.includes("harbour") ||
+    type.includes("harbor") ||
+    type.includes("basin")
+  );
 }
 
 function depthAssessment(
@@ -460,7 +470,8 @@ function verdictSummary(
   depth: TideDeparturePlan["depth_assessment"],
   routeMissing: boolean,
 ): string {
-  if (routeMissing) return "Herkomst en bestemming ontbreken of zijn niet planbaar; geen vertrekvenster berekend.";
+  if (routeMissing)
+    return "Herkomst en bestemming ontbreken of zijn niet planbaar; geen vertrekvenster berekend.";
   if (depth.status === "insufficient") return depth.summary;
   if (currentMissing && depth.status === "ok") {
     return "Diepgang lijkt binnen de routebasis te passen, maar een vertrekvenster op stroom/getij kan niet betrouwbaar worden gekozen zonder stroomrichting/stroomsnelheid.";
@@ -468,7 +479,8 @@ function verdictSummary(
   if (currentMissing && req.preferred_departure) {
     return `De voorgestelde vertrektijd ${req.preferred_departure} kan niet als slim of onslim worden beoordeeld zonder officiële stroomrichting/stroomsnelheid en een volledige dieptebasis.`;
   }
-  if (currentMissing) return "Geen betrouwbaar vertrekvenster: officiële stroomrichting/stroomsnelheid ontbreekt.";
+  if (currentMissing)
+    return "Geen betrouwbaar vertrekvenster: officiële stroomrichting/stroomsnelheid ontbreekt.";
   return depth.summary;
 }
 

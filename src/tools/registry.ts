@@ -38,12 +38,20 @@ export function registerTools(server: McpServer): void {
         "Vergelijk nooit een ruwe waterstand met diepgang; de dieptebeoordeling gebruikt alleen routedimensies of minst gepeilde diepte waar beschikbaar.",
       ].join(" "),
       inputSchema: {
-        origin: z.string().optional().describe("Vertrekplaats of ISRS-code, bijvoorbeeld 'Europoort' of 'Harlingen'."),
-        destination: z.string().optional().describe("Bestemming of ISRS-code, bijvoorbeeld 'Amsterdam' of 'Terschelling'."),
+        origin: z
+          .string()
+          .optional()
+          .describe("Vertrekplaats of ISRS-code, bijvoorbeeld 'Europoort' of 'Harlingen'."),
+        destination: z
+          .string()
+          .optional()
+          .describe("Bestemming of ISRS-code, bijvoorbeeld 'Amsterdam' of 'Terschelling'."),
         date_window: z
           .string()
           .optional()
-          .describe("Datum of tijdsvenster in lokale tijd of ISO-notatie, bijvoorbeeld 'morgen 04:00-12:00'."),
+          .describe(
+            "Datum of tijdsvenster in lokale tijd of ISO-notatie, bijvoorbeeld 'morgen 04:00-12:00'.",
+          ),
         draft_m: z.number().positive().optional().describe("Diepgang van het schip in meter."),
         safety_margin_m: z
           .number()

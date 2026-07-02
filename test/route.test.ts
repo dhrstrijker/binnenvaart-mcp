@@ -19,8 +19,20 @@ const itinerary = (over: Record<string, unknown> = {}) => ({
       Segments: [
         {
           Events: [
-            { EventType: "Lock", ObjectName: "Sluis Wijnegem", ISRS: ISRS_A, Latitude: 51.2267, Longitude: 4.5378 },
-            { EventType: "Bridge", ObjectName: "Brug 2 Oelegem", ISRS: "BERAS02046BRGA101168", Latitude: 51.2146, Longitude: 4.5763 },
+            {
+              EventType: "Lock",
+              ObjectName: "Sluis Wijnegem",
+              ISRS: ISRS_A,
+              Latitude: 51.2267,
+              Longitude: 4.5378,
+            },
+            {
+              EventType: "Bridge",
+              ObjectName: "Brug 2 Oelegem",
+              ISRS: "BERAS02046BRGA101168",
+              Latitude: 51.2146,
+              Longitude: 4.5763,
+            },
             { EventType: "Vpln", ObjectName: "Splitsing", ISRS: "x", Latitude: 51.1963, Longitude: 4.6418 }, // not a lock/bridge -> dropped from objects, kept in line
           ],
         },
@@ -63,7 +75,12 @@ describe("getVoyage", () => {
       [4.6418, 51.1963],
     ]);
     // locks and bridges carry their own coordinates for map markers.
-    expect(v?.objecten[0]).toMatchObject({ naam: "Sluis Wijnegem", type: "sluis", lat: 51.2267, lon: 4.5378 });
+    expect(v?.objecten[0]).toMatchObject({
+      naam: "Sluis Wijnegem",
+      type: "sluis",
+      lat: 51.2267,
+      lon: 4.5378,
+    });
     expect(v?.objecten[1]).toMatchObject({ type: "brug", lat: 51.2146, lon: 4.5763 });
   });
 
@@ -80,7 +97,9 @@ describe("getVoyage", () => {
               Segments: [
                 {
                   CompressedGeometry: encoded,
-                  Events: [{ EventType: "Lock", ObjectName: "Sluis X", ISRS: "ZZ", Latitude: 51.86, Longitude: 5.8 }],
+                  Events: [
+                    { EventType: "Lock", ObjectName: "Sluis X", ISRS: "ZZ", Latitude: 51.86, Longitude: 5.8 },
+                  ],
                 },
               ],
             },

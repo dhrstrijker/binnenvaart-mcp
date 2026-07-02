@@ -94,7 +94,9 @@ describe("getTideDepartureWindow", () => {
   });
 
   it("returns a useful blocker for general missing current-direction data questions", async () => {
-    const result = await getTideDepartureWindow({ context: "water-level data available but current data missing" });
+    const result = await getTideDepartureWindow({
+      context: "water-level data available but current data missing",
+    });
 
     expect(result.data?.current_assessment.summary).toContain("stroomrichting/stroomsnelheid");
     expect(result.datagaten.map((gap) => gap.code)).toContain(
@@ -126,7 +128,11 @@ describe("getTideDepartureWindow", () => {
       return routeOk(465);
     });
 
-    const result = await getTideDepartureWindow({ origin: "Europoort", destination: "Amsterdam", draft_m: 4.5 });
+    const result = await getTideDepartureWindow({
+      origin: "Europoort",
+      destination: "Amsterdam",
+      draft_m: 4.5,
+    });
 
     expect(result.data?.depth_assessment.status).toBe("insufficient");
     expect(result.data?.depth_assessment.required_depth_m).toBe(4.8);
