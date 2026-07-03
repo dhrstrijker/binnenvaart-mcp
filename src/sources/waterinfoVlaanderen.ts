@@ -23,6 +23,7 @@ export interface KiwisTimeseries {
   parametertype_name?: string;
   parametertype_id?: string;
   semantics: KiwisTimeseriesSemantics;
+  parameter_semantics: KiwisParameterSemantics;
   interval_minutes?: number;
 }
 
@@ -31,6 +32,7 @@ export interface KiwisStationCoverage {
   timeseries: KiwisTimeseries[];
   capabilities: DataCapability[];
   water_height_semantics: KiwisWaterHeightSemanticsSummary;
+  parameter_semantics: KiwisParameterSemanticsSummary;
 }
 
 export interface KiwisStationCoverageMatch {
@@ -55,12 +57,33 @@ export type KiwisTimeseriesSemantics =
   | "status"
   | "unknown";
 
+export type KiwisParameterSemantics =
+  | "water_height"
+  | "discharge"
+  | "current_speed"
+  | "current_direction"
+  | "water_quality"
+  | "status"
+  | "non_nautical"
+  | "unknown";
+
 export interface KiwisWaterHeightSemanticsSummary {
   forecast: number;
   measurement: number;
   threshold: number;
   statistic: number;
   status: number;
+  unknown: number;
+}
+
+export interface KiwisParameterSemanticsSummary {
+  water_height: number;
+  discharge: number;
+  current_speed: number;
+  current_direction: number;
+  water_quality: number;
+  status: number;
+  non_nautical: number;
   unknown: number;
 }
 
@@ -106,7 +129,7 @@ export async function getKiwisStations(stationNamePattern: string): Promise<Sour
 
 export async function getKiwisTimeseriesForStationPattern(
   stationNamePattern: string,
-  parameterName = "H",
+  parameterName?: string,
 ): Promise<SourceResult<KiwisTimeseries[]>> {
   const url = kiwisUrl({
     request: "getTimeseriesList",
@@ -120,7 +143,11 @@ export async function getKiwisTimeseriesForStationPattern(
     return {
       data: timeseries,
       bronregels: [
-        kiwisBronregel(`TimeseriesList ${stationNamePattern}`, `${timeseries.length} reeksen`, url),
+        kiwisBronregel(
+          `TimeseriesList ${stationNamePattern}${parameterName ? ` ${parameterName}` : " alle parameters"}`,
+          `${timeseries.length} reeksen`,
+          url,
+        ),
       ],
       datagaten: [],
     };
@@ -214,6 +241,10 @@ export function extractKiwisTimeseries(raw: unknown): KiwisTimeseries[] {
         ...(str(row.parametertype_name) ? { parametertype_name: str(row.parametertype_name) } : {}),
         ...(str(row.parametertype_id) ? { parametertype_id: str(row.parametertype_id) } : {}),
         semantics: classifyKiwisTimeseriesSemantics(str(row.ts_name)),
+        parameter_semantics: classifyKiwisParameterSemantics(
+          str(row.parametertype_name),
+          str(row.ts_name),
+        ),
         ...(kiwisTimeseriesIntervalMinutes(str(row.ts_name)) !== undefined
           ? { interval_minutes: kiwisTimeseriesIntervalMinutes(str(row.ts_name)) }
           : {}),
@@ -242,6 +273,7 @@ export function buildKiwisStationCoverage(
             timeseries: stationTimeseries,
             capabilities,
             water_height_semantics: summarizeKiwisWaterHeightSemantics(stationTimeseries),
+            parameter_semantics: summarizeKiwisParameterSemantics(stationTimeseries),
           }
         : undefined;
     })
@@ -335,6 +367,15 @@ function capabilitiesForKiwisTimeseries(timeseries: KiwisTimeseries[]): DataCapa
   ) {
     capabilities.add("water_level_threshold");
   }
+  if (timeseries.some((series) => series.parameter_semantics === "discharge")) {
+    capabilities.add("discharge");
+  }
+  if (timeseries.some((series) => series.parameter_semantics === "current_speed")) {
+    capabilities.add("current_speed");
+  }
+  if (timeseries.some((series) => series.parameter_semantics === "current_direction")) {
+    capabilities.add("current_direction");
+  }
   return [...capabilities];
 }
 
@@ -377,6 +418,58 @@ export function classifyKiwisTimeseriesSemantics(
   return "unknown";
 }
 
+export function classifyKiwisParameterSemantics(
+  parametertypeName: string | undefined,
+  tsName?: string,
+): KiwisParameterSemantics {
+  const parameter = normalizeText(parametertypeName ?? "");
+  const name = normalizeText(tsName ?? "");
+  if (!parameter) return "unknown";
+  if (parameter === "h") return "water_height";
+  if (parameter.includes("wind")) return "non_nautical";
+  if (parameter === "q" || parameter.includes("debiet") || parameter.includes("discharge")) {
+    return "discharge";
+  }
+  if (
+    parameter === "v" ||
+    parameter.includes("stroomsnelheid") ||
+    (parameter.includes("snelheid") && (parameter.includes("stroom") || name.includes("stroom"))) ||
+    (parameter.includes("velocity") && (parameter.includes("current") || name.includes("current")))
+  ) {
+    return "current_speed";
+  }
+  if (
+    parameter.includes("stroomrichting") ||
+    (parameter.includes("richting") && (parameter.includes("stroom") || name.includes("stroom"))) ||
+    (parameter.includes("direction") && (parameter.includes("current") || name.includes("current")))
+  ) {
+    return "current_direction";
+  }
+  if (parameter === "generic" || name.startsWith("status.")) return "status";
+  if (parameter === "vdc") return "non_nautical";
+  if (
+    [
+      "odo",
+      "orp",
+      "ds",
+      "ec",
+      "ec20",
+      "wt",
+      "ph",
+      "t",
+      "cdi",
+      "cdi_voorspeld",
+      "spi",
+      "spi-voorspeld",
+      "spei",
+      "spei-voorspeld",
+    ].includes(parameter)
+  ) {
+    return "water_quality";
+  }
+  return "unknown";
+}
+
 function isUsableKiwisWaterLevelSeries(series: KiwisTimeseries): boolean {
   return (
     normalizeText(series.parametertype_name ?? "") === "h" &&
@@ -398,6 +491,25 @@ function summarizeKiwisWaterHeightSemantics(
   for (const series of timeseries) {
     if (normalizeText(series.parametertype_name ?? "") !== "h") continue;
     summary[series.semantics] += 1;
+  }
+  return summary;
+}
+
+function summarizeKiwisParameterSemantics(
+  timeseries: KiwisTimeseries[],
+): KiwisParameterSemanticsSummary {
+  const summary: KiwisParameterSemanticsSummary = {
+    water_height: 0,
+    discharge: 0,
+    current_speed: 0,
+    current_direction: 0,
+    water_quality: 0,
+    status: 0,
+    non_nautical: 0,
+    unknown: 0,
+  };
+  for (const series of timeseries) {
+    summary[series.parameter_semantics] += 1;
   }
   return summary;
 }

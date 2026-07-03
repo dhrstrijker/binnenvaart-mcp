@@ -830,7 +830,7 @@ async function loadKiwisSourceDiscovery(
     bronregels.push(...stationResult.bronregels);
     datagaten.push(...softenKiwisDatagaten(stationResult.datagaten));
 
-    const timeseriesResult = await getKiwisTimeseriesForStationPattern(pattern, "H");
+    const timeseriesResult = await getKiwisTimeseriesForStationPattern(pattern);
     if (timeseriesResult.data) timeseries.push(...timeseriesResult.data);
     bronregels.push(...timeseriesResult.bronregels);
     datagaten.push(...softenKiwisDatagaten(timeseriesResult.datagaten));
@@ -851,7 +851,7 @@ async function loadKiwisSourceDiscovery(
             {
               code: "waterinfo-vlaanderen-kiwis-coverage-empty",
               message:
-                "Waterinfo Vlaanderen/KiWIS is bevraagd, maar leverde geen bruikbare H-tijdreeksdekking voor de Belgische routezoektermen.",
+                "Waterinfo Vlaanderen/KiWIS is bevraagd, maar leverde geen bruikbare tijdreeksdekking voor de Belgische routezoektermen.",
               severity: "caution",
             },
           ],
@@ -863,8 +863,8 @@ async function loadKiwisSourceDiscovery(
         coverage_count: kiwisStationCoverage.length,
         note:
           kiwisStationCoverage.length > 0
-            ? `Waterinfo Vlaanderen/KiWIS station- en H-tijdreeksdekking gebruikt als officiële Belgische stationmatching. ${kiwisSemanticsNote(kiwisStationCoverage)}`
-            : "Waterinfo Vlaanderen/KiWIS gaf geen bruikbare H-tijdreeksdekking; Belgische secties blijven een datagrens.",
+            ? `Waterinfo Vlaanderen/KiWIS station- en tijdreeksdekking gebruikt als officiële Belgische stationmatching. ${kiwisSemanticsNote(kiwisStationCoverage)}`
+            : "Waterinfo Vlaanderen/KiWIS gaf geen bruikbare tijdreeksdekking; Belgische secties blijven een datagrens.",
       },
     ],
   };
@@ -1248,11 +1248,28 @@ function kiwisSemanticsNote(coverage: KiwisStationCoverage[]): string {
       acc.statistic += item.water_height_semantics.statistic;
       acc.status += item.water_height_semantics.status;
       acc.unknown += item.water_height_semantics.unknown;
+      acc.discharge += item.parameter_semantics.discharge;
+      acc.current_speed += item.parameter_semantics.current_speed;
+      acc.current_direction += item.parameter_semantics.current_direction;
+      acc.water_quality += item.parameter_semantics.water_quality;
+      acc.non_nautical += item.parameter_semantics.non_nautical;
       return acc;
     },
-    { forecast: 0, measurement: 0, threshold: 0, statistic: 0, status: 0, unknown: 0 },
+    {
+      forecast: 0,
+      measurement: 0,
+      threshold: 0,
+      statistic: 0,
+      status: 0,
+      unknown: 0,
+      discharge: 0,
+      current_speed: 0,
+      current_direction: 0,
+      water_quality: 0,
+      non_nautical: 0,
+    },
   );
-  return `H-series: ${totals.forecast} verwachting, ${totals.measurement} meting, ${totals.threshold} drempel, ${totals.statistic} statistiek, ${totals.status} status, ${totals.unknown} onbekend.`;
+  return `H-series: ${totals.forecast} verwachting, ${totals.measurement} meting, ${totals.threshold} drempel, ${totals.statistic} statistiek, ${totals.status} status, ${totals.unknown} onbekend. Debiet/current-discovery: ${totals.discharge} debiet, ${totals.current_speed} stroomsnelheid, ${totals.current_direction} stroomrichting; ${totals.water_quality} waterkwaliteit en ${totals.non_nautical} niet-nautische telemetrie worden niet als stroom gebruikt.`;
 }
 
 function kiwisWaterLevelKindLabel(kind: KiwisTimeseries["semantics"]): string {
@@ -2188,9 +2205,7 @@ function sectionCurrentEvidence(
       !tideEstimate?.stations.some((station) => station.station.code === match.code),
   );
   if (unmatchedLocalAuthority) {
-    return missingCurrentEvidence(
-      `Deze sectie matcht op ${unmatchedLocalAuthority.label}, maar Waterinfo Vlaanderen/KiWIS tijdreeksen zijn nog niet aangesloten; gebruik geen Nederlandse peilplaats als vervanging voor dit Belgische trajectdeel.`,
-    );
+    return missingCurrentEvidence(kiwisCurrentMissingReason(unmatchedLocalAuthority));
   }
   if (!tideEstimate) {
     return missingCurrentEvidence(
@@ -2249,6 +2264,19 @@ function missingCurrentEvidence(reason: string): NonNullable<SectionAssessment["
     confidence: "missing",
     basis: reason,
   };
+}
+
+function kiwisCurrentMissingReason(match: StationMatch): string {
+  const hasSpeed = match.capabilities.includes("current_speed");
+  const hasDirection = match.capabilities.includes("current_direction");
+  const hasDischarge = match.capabilities.includes("discharge");
+  if (hasSpeed && hasDirection) {
+    return `Deze Belgische sectie matcht op ${match.label}; Waterinfo Vlaanderen/KiWIS-catalogus toont stroomsemantiek, maar waarde-ophaal, versheid en routebearing-koppeling zijn nog niet aangesloten. Gebruik geen Nederlandse peilplaats als vervanging voor dit Belgische trajectdeel.`;
+  }
+  if (hasDischarge) {
+    return `Deze Belgische sectie matcht op ${match.label}; Waterinfo Vlaanderen/KiWIS-catalogus toont debietdekking, maar debiet is geen stroomrichting of stroomsnelheid voor mee/tegen. Gebruik geen Nederlandse peilplaats als vervanging voor dit Belgische trajectdeel.`;
+  }
+  return `Deze Belgische sectie matcht op ${match.label}; Waterinfo Vlaanderen/KiWIS-catalogus toont geen expliciete stroomrichting/stroomsnelheid voor deze sectie. Gebruik geen Nederlandse peilplaats als vervanging voor dit Belgische trajectdeel.`;
 }
 
 function sectionKey(section: RouteSection): string {

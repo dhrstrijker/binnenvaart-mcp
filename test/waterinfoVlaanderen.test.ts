@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildKiwisStationCoverage,
   candidateKiwisWaterLevelTimeseries,
+  classifyKiwisParameterSemantics,
   classifyKiwisTimeseriesSemantics,
   extractKiwisStations,
   extractKiwisTimeseries,
@@ -58,6 +59,9 @@ describe("Waterinfo Vlaanderen KiWIS helpers", () => {
             "water_height_forecast",
             "water_height_measurement",
             "water_level_threshold",
+            "discharge",
+            "current_speed",
+            "current_direction",
           ]),
           water_height_semantics: expect.objectContaining({
             forecast: 1,
@@ -66,19 +70,50 @@ describe("Waterinfo Vlaanderen KiWIS helpers", () => {
             statistic: 1,
             status: 1,
           }),
+          parameter_semantics: expect.objectContaining({
+            water_height: 6,
+            discharge: 1,
+            current_speed: 1,
+            current_direction: 1,
+            non_nautical: 1,
+          }),
           timeseries: expect.arrayContaining([
             expect.objectContaining({
               ts_id: "0121323042",
               ts_name: "P.60",
               parametertype_name: "H",
               semantics: "measurement",
+              parameter_semantics: "water_height",
               interval_minutes: 60,
             }),
             expect.objectContaining({
               ts_id: "01315353042",
               ts_name: "Pv.15",
               semantics: "forecast",
+              parameter_semantics: "water_height",
               interval_minutes: 15,
+            }),
+            expect.objectContaining({
+              ts_id: "0199991042",
+              ts_name: "P.15",
+              parametertype_name: "Q",
+              parameter_semantics: "discharge",
+            }),
+            expect.objectContaining({
+              ts_id: "0199992042",
+              parametertype_name: "V",
+              parameter_semantics: "current_speed",
+            }),
+            expect.objectContaining({
+              ts_id: "0199993042",
+              ts_name: "R",
+              parametertype_name: "Stroomrichting",
+              parameter_semantics: "current_direction",
+            }),
+            expect.objectContaining({
+              ts_id: "0199994042",
+              parametertype_name: "Vdc",
+              parameter_semantics: "non_nautical",
             }),
           ]),
         }),
@@ -93,12 +128,21 @@ describe("Waterinfo Vlaanderen KiWIS helpers", () => {
     expect(classifyKiwisTimeseriesSemantics("DrempelAlarm")).toBe("threshold");
     expect(classifyKiwisTimeseriesSemantics("DagGem")).toBe("statistic");
     expect(classifyKiwisTimeseriesSemantics("AlarmStatus")).toBe("status");
+    expect(classifyKiwisParameterSemantics("H", "P.15")).toBe("water_height");
+    expect(classifyKiwisParameterSemantics("Q", "P.15")).toBe("discharge");
+    expect(classifyKiwisParameterSemantics("V", "P.15")).toBe("current_speed");
+    expect(classifyKiwisParameterSemantics("Stroomrichting", "R")).toBe("current_direction");
+    expect(classifyKiwisParameterSemantics("Vdc", "P.15")).toBe("non_nautical");
+    expect(classifyKiwisParameterSemantics("Windsnelheid", "P.15")).toBe("non_nautical");
+    expect(classifyKiwisParameterSemantics("Richting", "Windrichting")).toBe("unknown");
+    expect(classifyKiwisParameterSemantics("WT", "Watertemperatuur")).toBe("water_quality");
 
     const candidates = candidateKiwisWaterLevelTimeseries(
       extractKiwisTimeseries(timeseriesListFixture()),
       "forecast",
     );
     expect(candidates.map((series) => series.ts_name)).toEqual(["Pv.15", "P.15", "P.60", "O.Obs"]);
+    expect(candidates.map((series) => series.parametertype_name)).not.toContain("Q");
     expect(candidates.map((series) => series.ts_name)).not.toContain("DrempelAlarm");
   });
 
@@ -213,6 +257,10 @@ function timeseriesListFixture() {
     ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121326042", "DrempelAlarm", "01559", "H"],
     ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121308042", "DagGem", "01559", "H"],
     ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01123506042", "AlarmStatus", "01559", "H"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199991042", "P.15", "Q", "Q"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199992042", "P.15", "V", "V"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199993042", "R", "R", "Stroomrichting"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199994042", "P.15", "01521", "Vdc"],
     ["Schellebelle/Blokstraat/OudeSchelde", "01IMM0106", "01408641", "01290918042", "P.15", "01559", "H"],
   ];
 }

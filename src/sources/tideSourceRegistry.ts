@@ -115,7 +115,14 @@ export const SOURCE_REGISTRY: SourceRegistryEntry[] = [
     label: "Waterinfo Vlaanderen KiWIS",
     authority: "Waterinfo Vlaanderen",
     country_codes: ["BE"],
-    capabilities: ["water_height_forecast", "water_height_measurement", "water_level_threshold"],
+    capabilities: [
+      "water_height_forecast",
+      "water_height_measurement",
+      "water_level_threshold",
+      "current_speed",
+      "current_direction",
+      "discharge",
+    ],
     documentation_url: "https://waterinfo.vlaanderen.be/",
     endpoints: ["https://waterinfo.vlaanderen.be/"],
     freshness: {
@@ -125,7 +132,9 @@ export const SOURCE_REGISTRY: SourceRegistryEntry[] = [
       note: "Belgian/Flemish routes need local station discovery before current or depth claims are allowed.",
     },
     notes: [
-      "Registered as an authority boundary and discovery source until exact KiWIS time-series parameters are mapped.",
+      "H series are mapped as water-level forecast/measurement/threshold context.",
+      "Q/debiet and explicit current-speed/current-direction parameter families are catalog discovery only until value semantics and route bearing are wired.",
+      "Telemetry or quality parameters such as Vdc, ODO, EC, pH or temperature must never be treated as current.",
       "Do not substitute Dutch RWS data for Flemish route sections.",
     ],
   },
@@ -268,6 +277,42 @@ export const PARAMETER_CONTRACTS: ParameterContract[] = [
     },
     interpretation_note:
       "Threshold/status series such as Drempel* or AlarmStatus are alert context only and must not be selected as passage water-level values.",
+  },
+  {
+    id: "waterinfo-vlaanderen-discharge",
+    source_id: "waterinfo-vlaanderen-kiwis",
+    capability: "discharge",
+    label: "Vlaamse debietreeks",
+    kiwis: {
+      parameter_code: "Q",
+      status: "planned",
+    },
+    interpretation_note:
+      "Q/debiet series may be useful hydrological context, but are not current direction or enough-water proof without route-specific interpretation.",
+  },
+  {
+    id: "waterinfo-vlaanderen-current-speed",
+    source_id: "waterinfo-vlaanderen-kiwis",
+    capability: "current_speed",
+    label: "Vlaamse stroomsnelheid",
+    kiwis: {
+      parameter_code: "V",
+      status: "planned",
+    },
+    interpretation_note:
+      "Only explicit current-speed parameter families may support current evidence; Vdc or water-quality/telemetry series are not current.",
+  },
+  {
+    id: "waterinfo-vlaanderen-current-direction",
+    source_id: "waterinfo-vlaanderen-kiwis",
+    capability: "current_direction",
+    label: "Vlaamse stroomrichting",
+    kiwis: {
+      parameter_code: "direction",
+      status: "planned",
+    },
+    interpretation_note:
+      "Current direction must be explicit before Belgian sections can be classified as stroom mee/tegen.",
   },
   {
     id: "euris-route-depth-basis",

@@ -439,7 +439,13 @@ function kiwisStationMatches(
       .filter(Boolean)
       .join(" "),
     routeGeometry: section.geometry,
-    capabilities: ["water_height_forecast", "water_height_measurement"],
+    capabilities: [
+      "water_height_forecast",
+      "water_height_measurement",
+      "discharge",
+      "current_speed",
+      "current_direction",
+    ],
     limit: 8,
   });
   return matches.map((match: KiwisStationCoverageMatch) => ({
