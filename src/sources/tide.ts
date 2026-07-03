@@ -70,6 +70,7 @@ const MAX_KIWIS_SEARCH_TERMS = 3;
 const KIWIS_WATER_LEVEL_WINDOW_MINUTES = 60;
 const MAX_KIWIS_WATER_LEVEL_SECTIONS = 4;
 const MAX_EURIS_DEPTH_SECTIONS = 6;
+const MAX_EURIS_DEPTH_QUERIES_PER_SECTION = 6;
 
 let cachedRwsDiscovery:
   | {
@@ -1340,52 +1341,76 @@ async function loadEurisLeastSoundedDepthValues(
 
   let attemptedSections = 0;
   const depthByQuery = new Map<string, SourceResult<WaterLevel>>();
+  const reportedQueries = new Set<string>();
   for (const section of variant.secties) {
     if (attemptedSections >= MAX_EURIS_DEPTH_SECTIONS) break;
-    const query = eurisDepthQueryForSection(section);
-    if (!query) continue;
+    const queries = eurisDepthQueriesForSection(section);
+    if (!queries.length) continue;
     attemptedSections += 1;
-    const result = depthByQuery.get(query) ?? (await getWaterInfo(query, "diepte"));
-    depthByQuery.set(query, result);
-    bronregels.push(...result.bronregels);
-    datagaten.push(...softenEurisDepthDatagaten(result.datagaten));
+    let selected:
+      | {
+          query: string;
+          result: SourceResult<WaterLevel>;
+          data: WaterLevel;
+          depthM: number;
+          freshness: SourceFreshnessSummary;
+        }
+      | undefined;
 
-    const depthM = result.data ? hydrometeoDepthMeters(result.data) : undefined;
-    if (!result.data || depthM === undefined) {
+    for (const query of queries) {
+      const result = depthByQuery.get(query) ?? (await getWaterInfo(query, "diepte"));
+      depthByQuery.set(query, result);
+      if (!reportedQueries.has(query)) {
+        reportedQueries.add(query);
+        bronregels.push(...result.bronregels);
+        datagaten.push(...softenEurisDepthDatagaten(result.datagaten));
+      }
+
+      const depthM = result.data ? hydrometeoDepthMeters(result.data) : undefined;
+      if (!result.data || depthM === undefined) continue;
+
+      const freshness = sourceFreshnessSummary(
+        "euris-hydrometeo-v3",
+        `Minst gepeilde diepte ${result.data.locationName}`,
+        result.data.measuredAt,
+      );
+      if (freshness.status !== "fresh") {
+        datagaten.push(sourceFreshnessDatagat(freshness));
+        datagaten.push({
+          code: "euris-hydrometeo-depth-freshness-not-usable",
+          message: `EuRIS Hydrometeo LSD voor ${result.data.locationName} is niet fris genoeg om een genoeg-water claim te dragen.`,
+          severity: freshness.severity ?? "caution",
+        });
+        continue;
+      }
+
+      selected = { query, result, data: result.data, depthM, freshness };
+      break;
+    }
+
+    if (!selected) {
       datagaten.push({
         code: "euris-hydrometeo-depth-not-usable",
-        message: `EuRIS Hydrometeo LSD voor sectie ${section.waterwayName ?? section.segmentName ?? sectionKey(section)} is niet bruikbaar als dieptebasis; unit, referentievlak, timestamp of numerieke waarde ontbreekt.`,
+        message: `EuRIS Hydrometeo LSD voor sectie ${section.waterwayName ?? section.segmentName ?? sectionKey(section)} is niet bruikbaar als dieptebasis na queries: ${queries.join(", ")}.`,
         severity: "caution",
       });
       continue;
     }
-    const freshness = sourceFreshnessSummary(
-      "euris-hydrometeo-v3",
-      `Minst gepeilde diepte ${result.data.locationName}`,
-      result.data.measuredAt,
-    );
-    if (freshness.status !== "fresh") {
-      datagaten.push(sourceFreshnessDatagat(freshness));
-      datagaten.push({
-        code: "euris-hydrometeo-depth-freshness-not-usable",
-        message: `EuRIS Hydrometeo LSD voor ${result.data.locationName} is niet fris genoeg om een genoeg-water claim te dragen.`,
-        severity: freshness.severity ?? "caution",
-      });
-      continue;
-    }
+
+    const { query, data, depthM, freshness } = selected;
     eurisDepthFreshness.push(freshness);
     eurisDepthBySectionKey.set(sectionKey(section), {
       sectionKey: sectionKey(section),
       station: {
-        code: result.data.timeseriesId,
-        label: result.data.locationName,
+        code: data.timeseriesId,
+        label: data.locationName,
       },
       depth_m: depthM,
-      observed_at: result.data.measuredAt!,
-      reference_level: result.data.referenceLevel!,
-      unit: result.data.unit,
+      observed_at: data.measuredAt!,
+      reference_level: data.referenceLevel!,
+      unit: data.unit,
       freshness,
-      source: `EuRIS Hydrometeo_v3 LSD ${result.data.locationName}`,
+      source: `EuRIS Hydrometeo_v3 LSD ${data.locationName} via query "${query}"`,
     });
   }
 
@@ -1412,10 +1437,38 @@ async function loadEurisLeastSoundedDepthValues(
   };
 }
 
-function eurisDepthQueryForSection(section: RouteSection): string | undefined {
-  return [section.waterwayName, section.segmentName, section.fairwaySectionId]
-    .map((value) => value?.trim())
-    .find((value): value is string => Boolean(value && value.length >= 3));
+function eurisDepthQueriesForSection(section: RouteSection): string[] {
+  const candidates = [
+    section.waterwayName,
+    ...routeNameParts(section.segmentName),
+    section.segmentName,
+    ...section.events.map((event) => event.naam),
+    section.fairwaySectionId,
+  ];
+  return uniqueDepthQueries(candidates).slice(0, MAX_EURIS_DEPTH_QUERIES_PER_SECTION);
+}
+
+function routeNameParts(value: string | undefined): string[] {
+  const cleanValue = value?.trim();
+  if (!cleanValue) return [];
+  return cleanValue
+    .split(/\s+(?:-|–|—)\s+|\/|,|;|\(|\)/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 3);
+}
+
+function uniqueDepthQueries(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const queries: string[] = [];
+  for (const value of values) {
+    const query = value?.trim();
+    if (!query || query.length < 3) continue;
+    const key = normalize(query);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    queries.push(query);
+  }
+  return queries;
 }
 
 function hydrometeoDepthMeters(reading: WaterLevel): number | undefined {

@@ -938,6 +938,126 @@ describe("getTideDepartureWindow", () => {
     );
   });
 
+  it("tries specific segment names for EuRIS Hydrometeo LSD when the broad waterway query has no candidates", async () => {
+    const lsdQueries: string[] = [];
+    mockFetch((url) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Rotterdam")) {
+        return {
+          items: [
+            {
+              isrs: "NL666666666666666666",
+              nationalObjectName: "Rotterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Nieuwe Maas",
+              locationName: "Rotterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Amsterdam")) {
+        return {
+          items: [
+            {
+              isrs: AMSTERDAM_AREA,
+              nationalObjectName: "Amsterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Noordzeekanaal",
+              locationName: "Amsterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        return voyageOk({
+          AllowedDimensions: { Height: 900 },
+          Legs: [
+            {
+              FromObjectName: "Rotterdam",
+              ToObjectName: "Amsterdam",
+              Segments: [
+                {
+                  SegmentName: "Beneden-Lek - Nieuwe Maas",
+                  WaterwayName: "Lek",
+                  FairwaySectionId: "FS-LEK-1",
+                  Authority: "Rijkswaterstaat",
+                  Direction: "UPSTREAM",
+                  ETA: "2026-07-03T08:30:00Z",
+                  ETD: "2026-07-03T08:00:00Z",
+                  Length: 12500,
+                  CountryCodes: ["NL"],
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (url.includes("/api/v3/timeseries") && decoded.includes("definedParameterCode eq 'LSD'")) {
+        lsdQueries.push(decoded);
+        if (!decoded.includes("beneden-lek")) return { items: [] };
+        return {
+          items: [
+            {
+              id: "lsd-beneden-lek-1",
+              locationName: "Beneden-Lek",
+              fairwayName: "Lek",
+              countryCode: "NL",
+              definedParameterCode: "LSD",
+              value: 5.2,
+              unit: "m",
+              referenceLevel: "NAP",
+              measuredAt: "2026-07-03T10:15:00Z",
+              dataStatus: 0,
+            },
+          ],
+        };
+      }
+      if (url.includes("OphalenCatalogus")) {
+        return {};
+      }
+      if (url.includes("/api/chart/get")) {
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T10:00:00Z", -70],
+          ["2026-07-03T14:00:00Z", 100],
+          ["2026-07-03T18:00:00Z", -60],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Rotterdam",
+      destination: "Amsterdam",
+      draft_m: 4.5,
+      safety_margin_m: 0.3,
+      preference: "stroom mee",
+    });
+
+    expect(lsdQueries.length).toBeGreaterThanOrEqual(2);
+    expect(lsdQueries[0]).toContain("'lek'");
+    expect(lsdQueries.some((query) => query.includes("beneden-lek"))).toBe(true);
+    expect(result.data?.route_sections[0]).toMatchObject({
+      depth_status: "ok",
+      depth_evidence_kind: "least_sounded_depth",
+      available_depth_m: 5.2,
+      depth_basis: expect.stringContaining('via query "Beneden-Lek"'),
+    });
+    expect(result.data?.source_discovery).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_id: "euris-hydrometeo-v3",
+          status: "available",
+          coverage_count: 1,
+        }),
+      ]),
+    );
+  });
+
   it("returns stop when the available depth basis gives less than the requested margin", async () => {
     mockFetch((url) => {
       const decoded = decodeURIComponent(url);
