@@ -151,19 +151,21 @@ function stationListFixture() {
   return [
     ["station_name", "station_no", "station_id", "station_latitude", "station_longitude"],
     ["Albertdok/Schelde", "01K04_MQ45", "0120379", "51.2914621908115", "4.31336706809401"],
-    [
-      "Schellebelle/Blokstraat/OudeSchelde",
-      "01IMM0106",
-      "01408641",
-      "51.0255279581905",
-      "3.92998998372486",
-    ],
+    ["Schellebelle/Blokstraat/OudeSchelde", "01IMM0106", "01408641", "51.0255279581905", "3.92998998372486"],
   ];
 }
 
 function timeseriesListFixture() {
   return [
-    ["station_name", "station_no", "station_id", "ts_id", "ts_name", "parametertype_id", "parametertype_name"],
+    [
+      "station_name",
+      "station_no",
+      "station_id",
+      "ts_id",
+      "ts_name",
+      "parametertype_id",
+      "parametertype_name",
+    ],
     ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121323042", "P.60", "01559", "H"],
     ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01315353042", "Pv.15", "01559", "H"],
     ["Schellebelle/Blokstraat/OudeSchelde", "01IMM0106", "01408641", "01290918042", "P.15", "01559", "H"],

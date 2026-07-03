@@ -66,7 +66,13 @@ export const SOURCE_REGISTRY: SourceRegistryEntry[] = [
     label: "Rijkswaterstaat WaterWebservices DDAPI20",
     authority: "Rijkswaterstaat",
     country_codes: ["NL"],
-    capabilities: ["water_height_forecast", "tide_extrema", "current_speed", "current_direction", "discharge"],
+    capabilities: [
+      "water_height_forecast",
+      "tide_extrema",
+      "current_speed",
+      "current_direction",
+      "discharge",
+    ],
     documentation_url: "https://rijkswaterstaatdata.nl/waterdata/",
     endpoints: [
       "https://ddapi20-waterwebservices.rijkswaterstaat.nl/METADATASERVICES/OphalenCatalogus",
@@ -199,7 +205,8 @@ export const PARAMETER_CONTRACTS: ParameterContract[] = [
       proces_types: ["verwachting"],
     },
     unit_note: "Forecasts use the same AQUO water-height grootheid but require ProcesType verwachting.",
-    interpretation_note: "Forecast water height can support tide/depth context only when tied to a datum and depth basis.",
+    interpretation_note:
+      "Forecast water height can support tide/depth context only when tied to a datum and depth basis.",
   },
   {
     id: "rws-ddapi20-astronomical-water-height",
@@ -221,7 +228,8 @@ export const PARAMETER_CONTRACTS: ParameterContract[] = [
     aquo: {
       groepering_codes: ["GETETBRKD2", "GETETBRKDMSL2"],
     },
-    interpretation_note: "Grouped tide extremes include water level and high/low-water type; request the groepering explicitly.",
+    interpretation_note:
+      "Grouped tide extremes include water level and high/low-water type; request the groepering explicitly.",
   },
   {
     id: "waterinfo-vlaanderen-water-height",
@@ -232,7 +240,8 @@ export const PARAMETER_CONTRACTS: ParameterContract[] = [
       parameter_code: "H",
       status: "planned",
     },
-    interpretation_note: "Use only after station and parameter discovery; authority boundary evidence before that is not enough for a go/no-go.",
+    interpretation_note:
+      "Use only after station and parameter discovery; authority boundary evidence before that is not enough for a go/no-go.",
   },
   {
     id: "euris-route-depth-basis",
@@ -246,8 +255,10 @@ export const PARAMETER_CONTRACTS: ParameterContract[] = [
     source_id: "euris-hydrometeo-v3",
     capability: "depth_basis",
     label: "Minst gepeilde diepte",
-    unit_note: "EuRIS Hydrometeo LSD values must carry a unit and reference level before they can support a depth decision.",
-    interpretation_note: "LSD can support section-level depth checks, but raw WAL water height remains separate context.",
+    unit_note:
+      "EuRIS Hydrometeo LSD values must carry a unit and reference level before they can support a depth decision.",
+    interpretation_note:
+      "LSD can support section-level depth checks, but raw WAL water height remains separate context.",
   },
 ];
 

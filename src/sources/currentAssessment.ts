@@ -25,10 +25,14 @@ const DEFAULT_SLACK_SPEED_MPS = 0.05;
 
 export function evaluateDirectCurrent(input: DirectCurrentInput): DirectCurrentEvaluation {
   if (input.routeBearingDeg === undefined) {
-    return missing("Geen routebearing beschikbaar; directe stroomrichting kan niet met de vaarroute worden vergeleken.");
+    return missing(
+      "Geen routebearing beschikbaar; directe stroomrichting kan niet met de vaarroute worden vergeleken.",
+    );
   }
   if (!input.passageIso) {
-    return missing("Geen passagetijd beschikbaar; directe stroommeting kan niet op de sectiepassage worden gelegd.");
+    return missing(
+      "Geen passagetijd beschikbaar; directe stroommeting kan niet op de sectiepassage worden gelegd.",
+    );
   }
   const passageMs = Date.parse(input.passageIso);
   if (!Number.isFinite(passageMs)) {
@@ -39,7 +43,9 @@ export function evaluateDirectCurrent(input: DirectCurrentInput): DirectCurrentE
   const speed = nearestPoint(input.speedPoints, passageMs);
   const direction = nearestPoint(input.directionPoints, passageMs);
   if (!speed || !direction) {
-    return missing("RWS DDAPI20 leverde geen gekoppelde stroomsnelheid en stroomrichting rond de passagetijd.");
+    return missing(
+      "RWS DDAPI20 leverde geen gekoppelde stroomsnelheid en stroomrichting rond de passagetijd.",
+    );
   }
 
   const speedDeltaMinutes = Math.abs(speed.atMs - passageMs) / 60_000;
@@ -118,7 +124,10 @@ function missing(basis: string): DirectCurrentEvaluation {
   };
 }
 
-function nearestPoint(points: RwsObservationPoint[], passageMs: number):
+function nearestPoint(
+  points: RwsObservationPoint[],
+  passageMs: number,
+):
   | {
       point: RwsObservationPoint;
       atMs: number;

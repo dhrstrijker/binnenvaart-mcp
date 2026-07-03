@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { candidatePassageTime, routeBearingDegrees, type RouteSection } from "../src/sources/routeSections.js";
+import {
+  candidatePassageTime,
+  routeBearingDegrees,
+  type RouteSection,
+} from "../src/sources/routeSections.js";
 
 describe("route section helpers", () => {
   it("calculates deterministic route bearings from section geometry", () => {
-    expect(routeBearingDegrees([[5.85, 51.85], [5.8, 51.86], [5.75, 51.87]])).toBe(288);
+    expect(
+      routeBearingDegrees([
+        [5.85, 51.85],
+        [5.8, 51.86],
+        [5.75, 51.87],
+      ]),
+    ).toBe(288);
   });
 
   it("shifts section passage time relative to a candidate departure", () => {

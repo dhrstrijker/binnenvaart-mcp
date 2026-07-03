@@ -547,7 +547,11 @@ describe("getTideDepartureWindow", () => {
         expect.objectContaining({
           code: "rotterdam.nieuwemaas.ddapi20",
           source: "rws-ddapi20",
-          capabilities: expect.arrayContaining(["current_speed", "current_direction", "water_height_forecast"]),
+          capabilities: expect.arrayContaining([
+            "current_speed",
+            "current_direction",
+            "water_height_forecast",
+          ]),
         }),
       ]),
     );
@@ -1118,7 +1122,15 @@ describe("getTideDepartureWindow", () => {
       }
       if (url.includes("getTimeseriesList")) {
         return [
-          ["station_name", "station_no", "station_id", "ts_id", "ts_name", "parametertype_id", "parametertype_name"],
+          [
+            "station_name",
+            "station_no",
+            "station_id",
+            "ts_id",
+            "ts_name",
+            "parametertype_id",
+            "parametertype_name",
+          ],
           ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121323042", "P.60", "01559", "H"],
           ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01315353042", "Pv.15", "01559", "H"],
         ];

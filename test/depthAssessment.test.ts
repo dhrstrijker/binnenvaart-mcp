@@ -26,7 +26,9 @@ describe("depth assessment", () => {
   });
 
   it("accepts least sounded depth as an explicit depth basis", () => {
-    expect(evaluateDepth(leastSoundedDepthEvidence(5.2, "EuRIS Hydrometeo LSD", "NAP"), 4.8, 0.3)).toMatchObject({
+    expect(
+      evaluateDepth(leastSoundedDepthEvidence(5.2, "EuRIS Hydrometeo LSD", "NAP"), 4.8, 0.3),
+    ).toMatchObject({
       status: "ok",
       evidence_kind: "least_sounded_depth",
       available_depth_m: 5.2,

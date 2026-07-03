@@ -44,11 +44,15 @@ describe("tide source registry", () => {
   });
 
   it("flags stale or unknown source timestamps through source freshness policy", () => {
-    expect(assessFreshness("2026-07-03T08:00:00Z", "rws-ddapi20", new Date("2026-07-03T08:20:00Z"))).toMatchObject({
+    expect(
+      assessFreshness("2026-07-03T08:00:00Z", "rws-ddapi20", new Date("2026-07-03T08:20:00Z")),
+    ).toMatchObject({
       status: "fresh",
       age_minutes: 20,
     });
-    expect(assessFreshness("2026-07-03T08:00:00Z", "rws-ddapi20", new Date("2026-07-03T09:00:00Z"))).toMatchObject({
+    expect(
+      assessFreshness("2026-07-03T08:00:00Z", "rws-ddapi20", new Date("2026-07-03T09:00:00Z")),
+    ).toMatchObject({
       status: "stale",
       age_minutes: 60,
       severity: "caution",

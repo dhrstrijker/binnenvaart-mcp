@@ -176,10 +176,16 @@ describe("RWS DDAPI20 adapter helpers", () => {
   });
 
   it("maps known AQUO metadata codes to the engine capability vocabulary", () => {
-    expect(capabilitiesForMetadata({ messageId: 1, quantityCode: "WATHTE" })).toEqual(["water_height_forecast"]);
-    expect(capabilitiesForMetadata({ messageId: 2, groupingCode: "GETETBRKDMSL2" })).toEqual(["tide_extrema"]);
+    expect(capabilitiesForMetadata({ messageId: 1, quantityCode: "WATHTE" })).toEqual([
+      "water_height_forecast",
+    ]);
+    expect(capabilitiesForMetadata({ messageId: 2, groupingCode: "GETETBRKDMSL2" })).toEqual([
+      "tide_extrema",
+    ]);
     expect(capabilitiesForMetadata({ messageId: 3, quantityCode: "STROOMSHD" })).toEqual(["current_speed"]);
-    expect(capabilitiesForMetadata({ messageId: 4, quantityCode: "STROOMRTG" })).toEqual(["current_direction"]);
+    expect(capabilitiesForMetadata({ messageId: 4, quantityCode: "STROOMRTG" })).toEqual([
+      "current_direction",
+    ]);
     expect(capabilitiesForMetadata({ messageId: 5, quantityCode: "Q" })).toEqual(["discharge"]);
   });
 

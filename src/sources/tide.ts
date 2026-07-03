@@ -813,7 +813,10 @@ async function loadKiwisSourceDiscovery(
     datagaten.push(...softenKiwisDatagaten(timeseriesResult.datagaten));
   }
 
-  const kiwisStationCoverage = buildKiwisStationCoverage(uniqueKiwisStations(stations), uniqueKiwisTimeseries(timeseries));
+  const kiwisStationCoverage = buildKiwisStationCoverage(
+    uniqueKiwisStations(stations),
+    uniqueKiwisTimeseries(timeseries),
+  );
   return {
     kiwisStationCoverage,
     bronregels,
@@ -900,7 +903,12 @@ async function loadDirectCurrentObservations(
   destination: PlanningAnchor | undefined,
   tideEstimate: TideCurrentEstimate | undefined,
   sourceDiscovery: OfficialSourceDiscovery,
-): Promise<Pick<OfficialSourceDiscovery, "directCurrentBySectionKey" | "directCurrentFreshness" | "bronregels" | "datagaten">> {
+): Promise<
+  Pick<
+    OfficialSourceDiscovery,
+    "directCurrentBySectionKey" | "directCurrentFreshness" | "bronregels" | "datagaten"
+  >
+> {
   const directCurrentBySectionKey = new Map<string, DirectCurrentSectionEvidence>();
   const directCurrentFreshness: SourceFreshnessSummary[] = [];
   const bronregels: Bronregel[] = [];
@@ -911,21 +919,27 @@ async function loadDirectCurrentObservations(
   if (process.env.RWS_DDAPI20_CURRENT_OBSERVATIONS === "0") {
     datagaten.push({
       code: "rws-ddapi20-current-observations-skipped",
-      message: "RWS DDAPI20 directe stroomwaarnemingen zijn uitgeschakeld via RWS_DDAPI20_CURRENT_OBSERVATIONS=0.",
+      message:
+        "RWS DDAPI20 directe stroomwaarnemingen zijn uitgeschakeld via RWS_DDAPI20_CURRENT_OBSERVATIONS=0.",
       severity: "caution",
     });
     return { directCurrentBySectionKey, directCurrentFreshness, bronregels, datagaten };
   }
 
   const timelineStartIso = firstSectionDeparture(variant) ?? routeDepartureIso;
-  const candidateDepartureIso = req.preferred_departure ?? tideEstimate?.windows.find((window) => window.start)?.start;
+  const candidateDepartureIso =
+    req.preferred_departure ?? tideEstimate?.windows.find((window) => window.start)?.start;
   if (!timelineStartIso || !candidateDepartureIso) {
     return { directCurrentBySectionKey, directCurrentFreshness, bronregels, datagaten };
   }
   const routeTextValue =
     origin && destination
       ? routeText(req, origin, destination)
-      : normalize([req.origin, req.destination, req.route_hint, req.preference, req.context].filter(Boolean).join(" "));
+      : normalize(
+          [req.origin, req.destination, req.route_hint, req.preference, req.context]
+            .filter(Boolean)
+            .join(" "),
+        );
 
   let attemptedSections = 0;
   const attemptedLocations = new Set<string>();
@@ -946,8 +960,16 @@ async function loadDirectCurrentObservations(
         match.capabilities.includes("current_direction"),
     );
     if (!directMatch || attemptedLocations.has(`${directMatch.code}:${passageTime}`)) continue;
-    const speedCoverage = rwsCoverageFor(sourceDiscovery.rwsCatalogCoverage, directMatch.code, "current_speed");
-    const directionCoverage = rwsCoverageFor(sourceDiscovery.rwsCatalogCoverage, directMatch.code, "current_direction");
+    const speedCoverage = rwsCoverageFor(
+      sourceDiscovery.rwsCatalogCoverage,
+      directMatch.code,
+      "current_speed",
+    );
+    const directionCoverage = rwsCoverageFor(
+      sourceDiscovery.rwsCatalogCoverage,
+      directMatch.code,
+      "current_direction",
+    );
     if (!speedCoverage || !directionCoverage) continue;
 
     attemptedSections += 1;
@@ -958,7 +980,10 @@ async function loadDirectCurrentObservations(
       getRwsObservationsForCoverage(directionCoverage, window.startIso, window.endIso),
     ]);
     bronregels.push(...speed.bronregels, ...direction.bronregels);
-    datagaten.push(...softenObservationDatagaten(speed.datagaten), ...softenObservationDatagaten(direction.datagaten));
+    datagaten.push(
+      ...softenObservationDatagaten(speed.datagaten),
+      ...softenObservationDatagaten(direction.datagaten),
+    );
 
     const evaluation = evaluateDirectCurrent({
       routeBearingDeg: section.routeBearingDeg,
@@ -992,7 +1017,9 @@ function rwsCoverageFor(
   locationCode: string,
   capability: DataCapability,
 ): RwsCatalogCoverage | undefined {
-  return coverage.find((item) => item.location.code === locationCode && item.capabilities.includes(capability));
+  return coverage.find(
+    (item) => item.location.code === locationCode && item.capabilities.includes(capability),
+  );
 }
 
 function observationWindowAround(passageIso: string, minutes: number): { startIso: string; endIso: string } {
@@ -1019,7 +1046,12 @@ async function loadKiwisWaterLevelValues(
   destination: PlanningAnchor | undefined,
   tideEstimate: TideCurrentEstimate | undefined,
   sourceDiscovery: OfficialSourceDiscovery,
-): Promise<Pick<OfficialSourceDiscovery, "kiwisWaterLevelBySectionKey" | "kiwisWaterLevelFreshness" | "bronregels" | "datagaten">> {
+): Promise<
+  Pick<
+    OfficialSourceDiscovery,
+    "kiwisWaterLevelBySectionKey" | "kiwisWaterLevelFreshness" | "bronregels" | "datagaten"
+  >
+> {
   const kiwisWaterLevelBySectionKey = new Map<string, KiwisWaterLevelEvidence>();
   const kiwisWaterLevelFreshness: SourceFreshnessSummary[] = [];
   const bronregels: Bronregel[] = [];
@@ -1030,7 +1062,8 @@ async function loadKiwisWaterLevelValues(
   if (process.env.WATERINFO_VLAANDEREN_KIWIS_VALUES === "0") {
     datagaten.push({
       code: "waterinfo-vlaanderen-kiwis-values-skipped",
-      message: "Waterinfo Vlaanderen/KiWIS H-waterstandwaarden zijn uitgeschakeld via WATERINFO_VLAANDEREN_KIWIS_VALUES=0.",
+      message:
+        "Waterinfo Vlaanderen/KiWIS H-waterstandwaarden zijn uitgeschakeld via WATERINFO_VLAANDEREN_KIWIS_VALUES=0.",
       severity: "caution",
     });
     return { kiwisWaterLevelBySectionKey, kiwisWaterLevelFreshness, bronregels, datagaten };
@@ -1038,7 +1071,9 @@ async function loadKiwisWaterLevelValues(
 
   const timelineStartIso = firstSectionDeparture(variant) ?? routeDepartureIso;
   const candidateDepartureIso =
-    req.preferred_departure ?? tideEstimate?.windows.find((window) => window.start)?.start ?? timelineStartIso;
+    req.preferred_departure ??
+    tideEstimate?.windows.find((window) => window.start)?.start ??
+    timelineStartIso;
   if (!timelineStartIso || !candidateDepartureIso) {
     return { kiwisWaterLevelBySectionKey, kiwisWaterLevelFreshness, bronregels, datagaten };
   }
@@ -1046,7 +1081,11 @@ async function loadKiwisWaterLevelValues(
   const routeTextValue =
     origin && destination
       ? routeText(req, origin, destination)
-      : normalize([req.origin, req.destination, req.route_hint, req.preference, req.context].filter(Boolean).join(" "));
+      : normalize(
+          [req.origin, req.destination, req.route_hint, req.preference, req.context]
+            .filter(Boolean)
+            .join(" "),
+        );
 
   let attemptedSections = 0;
   const attemptedSeries = new Set<string>();
@@ -1083,7 +1122,11 @@ async function loadKiwisWaterLevelValues(
     bronregels.push(...values.bronregels);
     datagaten.push(...softenKiwisValueDatagaten(values.datagaten));
 
-    const nearest = nearestKiwisWaterLevelValue(values.data ?? [], passageTime, KIWIS_WATER_LEVEL_WINDOW_MINUTES);
+    const nearest = nearestKiwisWaterLevelValue(
+      values.data ?? [],
+      passageTime,
+      KIWIS_WATER_LEVEL_WINDOW_MINUTES,
+    );
     if (!nearest) {
       datagaten.push({
         code: "waterinfo-vlaanderen-kiwis-waterlevel-nearest-missing",
@@ -1122,7 +1165,9 @@ async function loadKiwisWaterLevelValues(
 function preferredKiwisWaterLevelTimeseries(timeseries: KiwisTimeseries[]): KiwisTimeseries | undefined {
   return [...timeseries]
     .filter((series) => normalize(series.parametertype_name ?? "") === "h")
-    .sort((a, b) => kiwisTimeseriesPriority(a) - kiwisTimeseriesPriority(b) || a.ts_id.localeCompare(b.ts_id))[0];
+    .sort(
+      (a, b) => kiwisTimeseriesPriority(a) - kiwisTimeseriesPriority(b) || a.ts_id.localeCompare(b.ts_id),
+    )[0];
 }
 
 function kiwisTimeseriesPriority(series: KiwisTimeseries): number {
@@ -1162,7 +1207,12 @@ function softenKiwisValueDatagaten(gaps: Datagat[]): Datagat[] {
 
 async function loadEurisLeastSoundedDepthValues(
   variant: RouteVariant | undefined,
-): Promise<Pick<OfficialSourceDiscovery, "eurisDepthBySectionKey" | "eurisDepthFreshness" | "bronregels" | "datagaten" | "summaries">> {
+): Promise<
+  Pick<
+    OfficialSourceDiscovery,
+    "eurisDepthBySectionKey" | "eurisDepthFreshness" | "bronregels" | "datagaten" | "summaries"
+  >
+> {
   const eurisDepthBySectionKey = new Map<string, EurisDepthSectionEvidence>();
   const eurisDepthFreshness: SourceFreshnessSummary[] = [];
   const bronregels: Bronregel[] = [];
@@ -1267,7 +1317,8 @@ async function loadEurisLeastSoundedDepthValues(
       {
         source_id: "euris-hydrometeo-v3",
         source_label: source.label,
-        status: eurisDepthBySectionKey.size > 0 ? "available" : attemptedSections > 0 ? "unavailable" : "skipped",
+        status:
+          eurisDepthBySectionKey.size > 0 ? "available" : attemptedSections > 0 ? "unavailable" : "skipped",
         coverage_count: eurisDepthBySectionKey.size,
         note:
           eurisDepthBySectionKey.size > 0
@@ -1319,7 +1370,11 @@ function basePlan(
   const routeTextValue =
     origin && destination
       ? routeText(req, origin, destination)
-      : normalize([req.origin, req.destination, req.route_hint, req.preference, req.context].filter(Boolean).join(" "));
+      : normalize(
+          [req.origin, req.destination, req.route_hint, req.preference, req.context]
+            .filter(Boolean)
+            .join(" "),
+        );
   const sectionAssessments = buildSectionAssessments(
     variant,
     voyage?.vertrek,
@@ -1541,7 +1596,11 @@ function windowSectionAssessment(
   routeTextValue: string,
   sourceDiscovery: OfficialSourceDiscovery,
 ): WindowSectionAssessment {
-  const depth = sectionDepthStatus(depthEvidenceForSection(section, variant, sourceDiscovery), requiredDepthM, safetyMarginM);
+  const depth = sectionDepthStatus(
+    depthEvidenceForSection(section, variant, sourceDiscovery),
+    requiredDepthM,
+    safetyMarginM,
+  );
   const passageTime = candidatePassageTime(section, timelineStartIso, candidateDepartureIso);
   const stationMatches = matchOfficialStations(
     section,
@@ -1549,11 +1608,18 @@ function windowSectionAssessment(
     sourceDiscovery.rwsCatalogCoverage,
     sourceDiscovery.kiwisStationCoverage,
   );
-  const currentEvidence = sectionCurrentEvidence(section, stationMatches, passageTime, tideEstimate, sourceDiscovery);
+  const currentEvidence = sectionCurrentEvidence(
+    section,
+    stationMatches,
+    passageTime,
+    tideEstimate,
+    sourceDiscovery,
+  );
   const missing = new Set<string>();
   if (!passageTime) missing.add("tide-departure-window-section-passagetime-missing");
   if (!stationMatches.length) missing.add("tide-departure-window-section-station-match-missing");
-  if (currentEvidence.status === "unknown") missing.add("tide-departure-window-section-current-phase-unknown");
+  if (currentEvidence.status === "unknown")
+    missing.add("tide-departure-window-section-current-phase-unknown");
   if (depth.status === "missing") missing.add("tide-departure-window-section-depth-basis-missing");
   if (depth.status === "insufficient") missing.add("tide-departure-window-section-depth-insufficient");
 
@@ -1585,7 +1651,9 @@ function scoreWindowSections(sections: WindowSectionAssessment[]): NonNullable<D
   const unknownCurrent = sections.filter((section) => section.current_status === "unknown").length;
   const depthOk = sections.filter((section) => section.depth_status === "ok").length;
   const depthWarning = sections.filter((section) => section.depth_status === "warn").length;
-  const depthBlocking = sections.filter((section) => section.depth_status === "insufficient" || section.depth_status === "missing").length;
+  const depthBlocking = sections.filter(
+    (section) => section.depth_status === "insufficient" || section.depth_status === "missing",
+  ).length;
   return {
     sections_total: sections.length,
     with_current_sections: withCurrent,
@@ -1595,7 +1663,8 @@ function scoreWindowSections(sections: WindowSectionAssessment[]): NonNullable<D
     depth_ok_sections: depthOk,
     depth_warning_sections: depthWarning,
     depth_blocking_sections: depthBlocking,
-    confidence: unknownCurrent === sections.length ? "missing" : againstCurrent > 0 || slack > 0 ? "low" : "medium",
+    confidence:
+      unknownCurrent === sections.length ? "missing" : againstCurrent > 0 || slack > 0 ? "low" : "medium",
   };
 }
 
@@ -1626,7 +1695,8 @@ function buildSectionAssessments(
 ): SectionAssessment[] {
   if (!variant) return [];
   const timelineStartIso = firstSectionDeparture(variant) ?? routeDepartureIso;
-  const candidateDepartureIso = preferredDepartureIso ?? tideEstimate?.windows.find((window) => window.start)?.start;
+  const candidateDepartureIso =
+    preferredDepartureIso ?? tideEstimate?.windows.find((window) => window.start)?.start;
   return variant.secties.map((section) =>
     sectionAssessment(
       section,
@@ -1663,7 +1733,13 @@ function sectionAssessment(
     sourceDiscovery.rwsCatalogCoverage,
     sourceDiscovery.kiwisStationCoverage,
   );
-  const currentEvidence = sectionCurrentEvidence(section, stationMatches, passageTime, tideEstimate, sourceDiscovery);
+  const currentEvidence = sectionCurrentEvidence(
+    section,
+    stationMatches,
+    passageTime,
+    tideEstimate,
+    sourceDiscovery,
+  );
   const waterLevelEvidence = sourceDiscovery.kiwisWaterLevelBySectionKey.get(sectionKey(section));
 
   if (tideEstimate) {
@@ -1705,12 +1781,12 @@ function sectionAssessment(
       currentEvidence.tier === "official_current"
         ? currentEvidence.status
         : currentEvidence.tier === "official_tide_corridor_rule" && currentEvidence.status !== "unknown"
-        ? currentEvidence.status
-        : currentEvidence.tier === "missing"
-          ? "unknown"
-        : tideEstimate
-          ? "indicative"
-          : "unknown",
+          ? currentEvidence.status
+          : currentEvidence.tier === "missing"
+            ? "unknown"
+            : tideEstimate
+              ? "indicative"
+              : "unknown",
     current_evidence: currentEvidence,
     depth_status: depth.status,
     ...(depth.basis ? { depth_basis: depth.basis } : {}),
@@ -1771,8 +1847,12 @@ function sectionCurrentEvidence(
       source: "Rijkswaterstaat DDAPI20 STROOMSHD/STROOMRTG meting",
       station: directCurrent.station,
       basis: `${directCurrent.evaluation.basis} Sectie: ${section.waterwayName ?? section.segmentName ?? "onbekend"}.`,
-      ...(directCurrent.evaluation.speed_mps !== undefined ? { speed_mps: directCurrent.evaluation.speed_mps } : {}),
-      ...(directCurrent.evaluation.direction_deg !== undefined ? { direction_deg: directCurrent.evaluation.direction_deg } : {}),
+      ...(directCurrent.evaluation.speed_mps !== undefined
+        ? { speed_mps: directCurrent.evaluation.speed_mps }
+        : {}),
+      ...(directCurrent.evaluation.direction_deg !== undefined
+        ? { direction_deg: directCurrent.evaluation.direction_deg }
+        : {}),
       ...(directCurrent.evaluation.observed_at ? { observed_at: directCurrent.evaluation.observed_at } : {}),
       ...(directCurrent.evaluation.angle_to_route_deg !== undefined
         ? { angle_to_route_deg: directCurrent.evaluation.angle_to_route_deg }
@@ -1792,13 +1872,17 @@ function sectionCurrentEvidence(
     );
   }
   if (!tideEstimate) {
-    return missingCurrentEvidence("Geen tideEstimate of directe bruikbare stroommeting beschikbaar voor deze route-sectie.");
+    return missingCurrentEvidence(
+      "Geen tideEstimate of directe bruikbare stroommeting beschikbaar voor deze route-sectie.",
+    );
   }
 
   const availableStations = new Map(tideEstimate.stations.map((station) => [station.station.code, station]));
   const matched = stationMatches
     .map((match) => ({ match, estimate: availableStations.get(match.code) }))
-    .find((item): item is { match: StationMatch; estimate: TideStationEstimate } => item.estimate !== undefined);
+    .find(
+      (item): item is { match: StationMatch; estimate: TideStationEstimate } => item.estimate !== undefined,
+    );
   const estimate = matched?.estimate ?? tideEstimate.stations[0];
   if (!estimate) {
     return missingCurrentEvidence("Geen gekoppelde peilplaats met getijreeks beschikbaar voor deze sectie.");
@@ -1827,12 +1911,7 @@ function toCurrentEvidence(
     tier: assessment.status === "unknown" ? "missing" : "official_tide_corridor_rule",
     status: assessment.status,
     phase: assessment.phase,
-    confidence:
-      assessment.status === "unknown"
-        ? "missing"
-        : match?.confidence === "high"
-          ? "medium"
-          : "low",
+    confidence: assessment.status === "unknown" ? "missing" : match?.confidence === "high" ? "medium" : "low",
     source: "Rijkswaterstaat Waterinfo /api/chart/get + expliciete corridorregel",
     station: assessment.station ?? estimate.station,
     basis: `${assessment.basis} Corridorregel ${tideEstimate.corridorRuleId} ${tideEstimate.corridorRuleVersion}.${matchText} Sectie: ${section.waterwayName ?? section.segmentName ?? "onbekend"}.`,
@@ -1884,8 +1963,8 @@ function depthEvidenceForSection(
 function hasDepthBasis(variant: RouteVariant | undefined, sourceDiscovery: OfficialSourceDiscovery): boolean {
   return Boolean(
     variant?.maxAfmetingen?.diepgangCm !== undefined ||
-      variant?.secties.some((section) => section.dimensions?.diepgangCm !== undefined) ||
-      sourceDiscovery.eurisDepthBySectionKey.size > 0,
+    variant?.secties.some((section) => section.dimensions?.diepgangCm !== undefined) ||
+    sourceDiscovery.eurisDepthBySectionKey.size > 0,
   );
 }
 
@@ -2294,12 +2373,20 @@ function depthAssessment(
   safetyMarginM: number,
   sourceDiscovery: OfficialSourceDiscovery = emptySourceDiscovery(),
 ): TideDeparturePlan["depth_assessment"] {
-  const evaluation = evaluateDepth(routeDepthEvidence(variant, sourceDiscovery), requiredDepthM, safetyMarginM);
+  const evaluation = evaluateDepth(
+    routeDepthEvidence(variant, sourceDiscovery),
+    requiredDepthM,
+    safetyMarginM,
+  );
   return {
     status: evaluation.status,
     summary: evaluation.summary,
-    ...(evaluation.available_draught_m !== undefined ? { allowed_draught_m: evaluation.available_draught_m } : {}),
-    ...(evaluation.available_depth_m !== undefined ? { available_depth_m: evaluation.available_depth_m } : {}),
+    ...(evaluation.available_draught_m !== undefined
+      ? { allowed_draught_m: evaluation.available_draught_m }
+      : {}),
+    ...(evaluation.available_depth_m !== undefined
+      ? { available_depth_m: evaluation.available_depth_m }
+      : {}),
     ...(evaluation.required_depth_m !== undefined ? { required_depth_m: evaluation.required_depth_m } : {}),
     ...(evaluation.margin_m !== undefined ? { margin_m: evaluation.margin_m } : {}),
     ...(evaluation.basis ? { basis: evaluation.basis } : {}),

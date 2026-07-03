@@ -197,7 +197,8 @@ function resolveAvailableDepth(evidence: DepthEvidence): {
       return {
         confidence: "low",
         basis: evidence.source,
-        rejectedReason: "Referentievlak ontbreekt; waterhoogte kan niet veilig met basisdiepte worden gecombineerd.",
+        rejectedReason:
+          "Referentievlak ontbreekt; waterhoogte kan niet veilig met basisdiepte worden gecombineerd.",
       };
     }
     if (normalize(evidence.baseReferenceLevel) !== normalize(evidence.waterReferenceLevel)) {

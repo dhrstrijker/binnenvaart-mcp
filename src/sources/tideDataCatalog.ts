@@ -173,7 +173,9 @@ export function matchOfficialStations(
   kiwisStationCoverage: KiwisStationCoverage[] = [],
 ): StationMatch[] {
   const kiwisMatches = kiwisStationMatches(section, routeTextValue, kiwisStationCoverage);
-  const staticMatches = OFFICIAL_DATA_STATIONS.map((station) => stationMatch(section, routeTextValue, station))
+  const staticMatches = OFFICIAL_DATA_STATIONS.map((station) =>
+    stationMatch(section, routeTextValue, station),
+  )
     .filter((match): match is StationMatch => match !== undefined)
     .filter((match) => !(kiwisMatches.length > 0 && match.code === "vlaanderen.waterinfo.discovery"));
   return mergeStationMatches([
@@ -370,7 +372,13 @@ function rwsCatalogStationMatches(
       .filter(Boolean)
       .join(" "),
     routeGeometry: section.geometry,
-    capabilities: ["water_height_forecast", "tide_extrema", "current_speed", "current_direction", "discharge"],
+    capabilities: [
+      "water_height_forecast",
+      "tide_extrema",
+      "current_speed",
+      "current_direction",
+      "discharge",
+    ],
     limit: 24,
   });
   const byLocation = new Map<string, RwsCatalogCoverageMatch[]>();
@@ -393,7 +401,8 @@ function rwsCatalogStationMatches(
     const bestDistance = locationMatches
       .map((match) => match.distance_km)
       .filter((value): value is number => typeof value === "number");
-    const score = Math.max(...locationMatches.map((match) => match.score)) + Math.min(25, capabilities.length * 5);
+    const score =
+      Math.max(...locationMatches.map((match) => match.score)) + Math.min(25, capabilities.length * 5);
     return {
       code: location.code,
       label: location.name ?? location.description ?? location.code,
@@ -467,7 +476,7 @@ function mergeStationMatches(matches: StationMatch[]): StationMatch[] {
       distance_km:
         existing.distance_km !== undefined && match.distance_km !== undefined
           ? Math.min(existing.distance_km, match.distance_km)
-          : existing.distance_km ?? match.distance_km,
+          : (existing.distance_km ?? match.distance_km),
     });
   }
   return [...byKey.values()];
@@ -490,7 +499,8 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 function nearestDistanceKm(section: RouteSection, station: OfficialDataStation): number | undefined {
-  if (station.lon === undefined || station.lat === undefined || section.geometry.length === 0) return undefined;
+  if (station.lon === undefined || station.lat === undefined || section.geometry.length === 0)
+    return undefined;
   const distances = section.geometry.map(([lon, lat]) => haversineKm(lat, lon, station.lat!, station.lon!));
   return Math.min(...distances);
 }

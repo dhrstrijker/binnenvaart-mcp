@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  assessCurrentPhaseAtPassage,
-  matchOfficialStations,
-} from "../src/sources/tideDataCatalog.js";
+import { assessCurrentPhaseAtPassage, matchOfficialStations } from "../src/sources/tideDataCatalog.js";
 import { extractRwsCatalogCoverage } from "../src/sources/rwsDdapi20.js";
 import type { KiwisStationCoverage } from "../src/sources/waterinfoVlaanderen.js";
 import type { RouteSection } from "../src/sources/routeSections.js";
@@ -33,7 +30,9 @@ describe("tide data catalog", () => {
       source: "rws-waterinfo-astronomical-tide",
       confidence: "high",
     });
-    expect(matches[0]?.capabilities).toEqual(expect.arrayContaining(["water_height_forecast", "tide_extrema"]));
+    expect(matches[0]?.capabilities).toEqual(
+      expect.arrayContaining(["water_height_forecast", "tide_extrema"]),
+    );
   });
 
   it("adds DDAPI20 catalog-discovered coverage as official station evidence", () => {

@@ -80,7 +80,9 @@ export function buildRouteSections(legs: EurisLegRecord[]): RouteSection[] {
       const events = (segment.Events ?? []).map(toRouteSectionEvent);
       const decodedGeometry =
         typeof segment.CompressedGeometry === "string" && segment.CompressedGeometry.length > 0
-          ? decodePolyline(segment.CompressedGeometry).map(([lat, lon]) => [round5(lon), round5(lat)] as LonLat)
+          ? decodePolyline(segment.CompressedGeometry).map(
+              ([lat, lon]) => [round5(lon), round5(lat)] as LonLat,
+            )
           : [];
       const eventGeometry = events.flatMap((event) =>
         event.lat !== undefined && event.lon !== undefined ? ([[event.lon, event.lat]] as LonLat[]) : [],
@@ -99,7 +101,9 @@ export function buildRouteSections(legs: EurisLegRecord[]): RouteSection[] {
         ...(clean(segment.ETA) ? { eta: clean(segment.ETA) } : {}),
         ...(clean(segment.ETD) ? { etd: clean(segment.ETD) } : {}),
         ...(typeof segment.Length === "number" ? { lengthM: segment.Length } : {}),
-        ...(toRouteSectionDimensions(segment.Dimensions) ? { dimensions: toRouteSectionDimensions(segment.Dimensions) } : {}),
+        ...(toRouteSectionDimensions(segment.Dimensions)
+          ? { dimensions: toRouteSectionDimensions(segment.Dimensions) }
+          : {}),
         countryCodes: countryCodes(segment.CountryCodes),
         geometry,
         ...(routeBearingDeg !== undefined ? { routeBearingDeg } : {}),
@@ -141,7 +145,11 @@ export function candidatePassageTime(
         : Number.isFinite(etdMs)
           ? etdMs
           : NaN;
-  if (!Number.isFinite(routeDepartureMs) || !Number.isFinite(candidateDepartureMs) || !Number.isFinite(passageMs)) {
+  if (
+    !Number.isFinite(routeDepartureMs) ||
+    !Number.isFinite(candidateDepartureMs) ||
+    !Number.isFinite(passageMs)
+  ) {
     return undefined;
   }
   return new Date(candidateDepartureMs + (passageMs - routeDepartureMs)).toISOString();
@@ -161,7 +169,9 @@ function toRouteSectionEvent(event: EurisEventRecord): RouteSectionEvent {
     ...(typeof event.AbsoluteDistance === "number" ? { absoluteDistanceM: event.AbsoluteDistance } : {}),
     ...(lat !== undefined ? { lat } : {}),
     ...(lon !== undefined ? { lon } : {}),
-    ...(toRouteSectionDimensions(event.Dimensions) ? { dimensions: toRouteSectionDimensions(event.Dimensions) } : {}),
+    ...(toRouteSectionDimensions(event.Dimensions)
+      ? { dimensions: toRouteSectionDimensions(event.Dimensions) }
+      : {}),
   };
 }
 

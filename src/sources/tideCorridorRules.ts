@@ -59,7 +59,14 @@ export const CORRIDOR_RULES: CorridorRule[] = [
     source: "corridor-rule",
     source_note:
       "Indicatieve schippersregel: opkomend water na laagwater wordt richting binnenwater gunstig behandeld; afgaand water na hoogwater richting zee.",
-    applies_when_any_keyword: ["europoort", "rotterdam", "nieuwe waterweg", "nieuwe maas", "lek", "dordrecht"],
+    applies_when_any_keyword: [
+      "europoort",
+      "rotterdam",
+      "nieuwe waterweg",
+      "nieuwe maas",
+      "lek",
+      "dordrecht",
+    ],
     inland_destination_keywords: ["amsterdam", "lek", "dordrecht", "utrecht", "merwede", "benedenrivieren"],
     seaward_destination_keywords: ["europoort", "maasvlakte", "zee", "hoek van holland"],
     default_inland: true,
@@ -71,16 +78,14 @@ export const CORRIDOR_RULES: CorridorRule[] = [
         stationLabel: "Europoort, Harmsenbrug",
         stationRole: "departure",
         match_keywords: ["europoort", "maasvlakte"],
-        method:
-          "Vertrekpeilplaats voor Europoort; gebruik laagwater/hoogwater hier als lokale vertrekfase.",
+        method: "Vertrekpeilplaats voor Europoort; gebruik laagwater/hoogwater hier als lokale vertrekfase.",
       },
       {
         stationCode: "dordrecht.oudemaas.benedenmerwede",
         stationLabel: "Dordrecht Oude Maas, Beneden Merwede",
         stationRole: "departure",
         match_keywords: ["dordrecht", "merwede"],
-        method:
-          "Vertrekpeilplaats bij Dordrecht; gebruik laagwater/hoogwater hier als lokale vertrekfase.",
+        method: "Vertrekpeilplaats bij Dordrecht; gebruik laagwater/hoogwater hier als lokale vertrekfase.",
       },
       {
         stationCode: "rotterdam.nieuwemaas.boerengat",
@@ -104,7 +109,8 @@ export const CORRIDOR_RULES: CorridorRule[] = [
         stationLabel: "Dordrecht Oude Maas, Beneden Merwede",
         stationRole: "checkpoint",
         match_keywords: ["lek", "dordrecht", "merwede", "noord"],
-        method: "Checkpoint-peilplaats voor benedenrivieren/Lek-route; met passagetijd kruisen waar mogelijk.",
+        method:
+          "Checkpoint-peilplaats voor benedenrivieren/Lek-route; met passagetijd kruisen waar mogelijk.",
       },
     ],
     limitations: [
@@ -121,7 +127,16 @@ export const CORRIDOR_RULES: CorridorRule[] = [
     source: "corridor-rule",
     source_note:
       "Indicatieve schippersregel: opkomend water is gunstig landinwaarts op de Schelde; afgaand water richting zee.",
-    applies_when_any_keyword: ["vlissingen", "terneuzen", "westerschelde", "schelde", "antwerp", "antwerpen", "ghent", "gent"],
+    applies_when_any_keyword: [
+      "vlissingen",
+      "terneuzen",
+      "westerschelde",
+      "schelde",
+      "antwerp",
+      "antwerpen",
+      "ghent",
+      "gent",
+    ],
     inland_destination_keywords: ["antwerp", "antwerpen", "ghent", "gent", "terneuzen"],
     seaward_destination_keywords: ["vlissingen", "zee", "noordzee"],
     default_inland: true,
@@ -141,8 +156,7 @@ export const CORRIDOR_RULES: CorridorRule[] = [
         stationLabel: "Vlissingen",
         stationRole: "departure",
         match_keywords: ["vlissingen", "westerschelde", "schelde", "antwerpen", "antwerp"],
-        method:
-          "Vertrekpeilplaats voor Westerschelde; gebruik hoog-/laagwater als indicatieve fase.",
+        method: "Vertrekpeilplaats voor Westerschelde; gebruik hoog-/laagwater als indicatieve fase.",
       },
     ],
     checkpoint_stations: [
@@ -151,7 +165,8 @@ export const CORRIDOR_RULES: CorridorRule[] = [
         stationLabel: "Terneuzen",
         stationRole: "checkpoint",
         match_keywords: ["terneuzen", "gent", "ghent"],
-        method: "Checkpoint bij Terneuzen; Belgische trajectdelen hebben aanvullende Vlaamse brondekking nodig.",
+        method:
+          "Checkpoint bij Terneuzen; Belgische trajectdelen hebben aanvullende Vlaamse brondekking nodig.",
       },
     ],
     limitations: [
@@ -211,14 +226,11 @@ export const CORRIDOR_RULES: CorridorRule[] = [
         stationLabel: "IJmuiden, buitenhaven",
         stationRole: "departure",
         match_keywords: ["ijmuiden", "noordzeekanaal", "amsterdam"],
-        method:
-          "Peilplaats bij IJmuiden; gebruik hoog-/laagwater als indicatieve fase voor Noordzeekanaal.",
+        method: "Peilplaats bij IJmuiden; gebruik hoog-/laagwater als indicatieve fase voor Noordzeekanaal.",
       },
     ],
     checkpoint_stations: [],
-    limitations: [
-      "Sluizen en kanaalregime kunnen dominanter zijn dan open getijstroom.",
-    ],
+    limitations: ["Sluizen en kanaalregime kunnen dominanter zijn dan open getijstroom."],
   },
 ];
 
@@ -268,7 +280,11 @@ function corridorRuleScore(
   return score;
 }
 
-function determineDirection(rule: CorridorRule, originText: string, destinationText: string): "inland" | "seaward" {
+function determineDirection(
+  rule: CorridorRule,
+  originText: string,
+  destinationText: string,
+): "inland" | "seaward" {
   if (mentionsAny(destinationText, rule.inland_destination_keywords)) return "inland";
   if (mentionsAny(destinationText, rule.seaward_destination_keywords)) return "seaward";
   if (mentionsAny(originText, rule.seaward_destination_keywords)) return "inland";
@@ -290,7 +306,8 @@ function pickCheckpointStations(
   primaryStation: CorridorStationRule,
 ): CorridorStationRule[] {
   return rule.checkpoint_stations.filter(
-    (station) => station.stationCode !== primaryStation.stationCode && mentionsAny(routeText, station.match_keywords),
+    (station) =>
+      station.stationCode !== primaryStation.stationCode && mentionsAny(routeText, station.match_keywords),
   );
 }
 

@@ -124,13 +124,17 @@ export function rwsAquoSelectionForMetadata(metadata: RwsCatalogMetadata): RwsAq
     ...(metadata.compartmentCode ? { compartimentCode: metadata.compartmentCode } : {}),
     ...(metadata.quantityCode ? { grootheidCode: metadata.quantityCode } : {}),
     ...(metadata.groupingCode ? { groeperingCode: metadata.groupingCode } : {}),
-    ...(metadata.processType === "meting" || metadata.processType === "verwachting" || metadata.processType === "astronomisch"
+    ...(metadata.processType === "meting" ||
+    metadata.processType === "verwachting" ||
+    metadata.processType === "astronomisch"
       ? { procesType: metadata.processType }
       : {}),
   };
 }
 
-export async function getRwsCatalog(body = rwsCatalogBody({ compartimenten: true, grootheden: true })): Promise<SourceResult<unknown>> {
+export async function getRwsCatalog(
+  body = rwsCatalogBody({ compartimenten: true, grootheden: true }),
+): Promise<SourceResult<unknown>> {
   const url = `${RWS_DDAPI20_BASE_URL}/METADATASERVICES/OphalenCatalogus`;
   try {
     const data = await postJson<unknown>(url, body, { timeoutMs: 30_000 });
@@ -153,7 +157,9 @@ export async function getRwsCatalog(body = rwsCatalogBody({ compartimenten: true
   }
 }
 
-export async function getRwsObservations(req: RwsObservationRequest): Promise<SourceResult<RwsObservationPoint[]>> {
+export async function getRwsObservations(
+  req: RwsObservationRequest,
+): Promise<SourceResult<RwsObservationPoint[]>> {
   const url = `${RWS_DDAPI20_BASE_URL}/ONLINEWAARNEMINGENSERVICES/OphalenWaarnemingen`;
   try {
     const raw = await postJson<unknown>(url, rwsObservationBody(req), { timeoutMs: 30_000 });
@@ -214,13 +220,20 @@ export function extractRwsCatalogMetadata(raw: unknown): RwsCatalogMetadata[] {
 }
 
 export function extractRwsCatalogCoverage(raw: unknown): RwsCatalogCoverage[] {
-  const locations = new Map(extractRwsCatalogLocations(raw).map((location) => [location.messageId, location]));
+  const locations = new Map(
+    extractRwsCatalogLocations(raw).map((location) => [location.messageId, location]),
+  );
   const metadata = new Map(extractRwsCatalogMetadata(raw).map((item) => [item.messageId, item]));
   const coverage: RwsCatalogCoverage[] = [];
 
   for (const link of arrayField(raw, "AquoMetadataLocatieLijst")) {
     if (!isRecord(link)) continue;
-    const metadataId = numberField(link, "AquoMetaData_MessageID", "AquoMetadata_MessageID", "AquoMetadataMessageID");
+    const metadataId = numberField(
+      link,
+      "AquoMetaData_MessageID",
+      "AquoMetadata_MessageID",
+      "AquoMetadataMessageID",
+    );
     const locationId = numberField(link, "Locatie_MessageID", "LocatieMessageID");
     if (metadataId === undefined || locationId === undefined) continue;
     const location = locations.get(locationId);
@@ -264,7 +277,10 @@ export function findRwsCatalogCoverage(
       }),
     )
     .filter((match): match is RwsCatalogCoverageMatch => match !== undefined)
-    .sort((a, b) => b.score - a.score || a.coverage.location.name?.localeCompare(b.coverage.location.name ?? "") || 0)
+    .sort(
+      (a, b) =>
+        b.score - a.score || a.coverage.location.name?.localeCompare(b.coverage.location.name ?? "") || 0,
+    )
     .slice(0, options.limit ?? 8);
 }
 
@@ -310,7 +326,9 @@ function toObservationPoint(record: Record<string, unknown>): RwsObservationPoin
   const dateTime = stringField(record, "Tijdstip", "dateTime", "DateTime");
   const value =
     numberField(record, "Waarde_Numeriek", "value", "Value") ??
-    (isRecord(record.Meetwaarde) ? numberField(record.Meetwaarde, "Waarde_Numeriek", "value", "Value") : undefined);
+    (isRecord(record.Meetwaarde)
+      ? numberField(record.Meetwaarde, "Waarde_Numeriek", "value", "Value")
+      : undefined);
   if (!dateTime || value === undefined || !Number.isFinite(Date.parse(dateTime))) return undefined;
   const unit =
     stringField(record, "Eenheid", "unit") ??
@@ -319,7 +337,9 @@ function toObservationPoint(record: Record<string, unknown>): RwsObservationPoin
     dateTime,
     value,
     ...(unit ? { unit } : {}),
-    ...(stringField(record, "Kwaliteitswaardecode", "qualityCode") ? { qualityCode: stringField(record, "Kwaliteitswaardecode", "qualityCode") } : {}),
+    ...(stringField(record, "Kwaliteitswaardecode", "qualityCode")
+      ? { qualityCode: stringField(record, "Kwaliteitswaardecode", "qualityCode") }
+      : {}),
   };
 }
 
@@ -332,10 +352,18 @@ function toCatalogLocation(record: unknown): RwsCatalogLocation | undefined {
     messageId,
     code,
     ...(stringField(record, "Naam", "Name") ? { name: stringField(record, "Naam", "Name") } : {}),
-    ...(stringField(record, "Omschrijving", "Description") ? { description: stringField(record, "Omschrijving", "Description") } : {}),
-    ...(stringField(record, "Coordinatenstelsel", "CoordinateSystem") ? { coordinateSystem: stringField(record, "Coordinatenstelsel", "CoordinateSystem") } : {}),
-    ...(numberField(record, "Lat", "Latitude") !== undefined ? { lat: numberField(record, "Lat", "Latitude") } : {}),
-    ...(numberField(record, "Lon", "Longitude") !== undefined ? { lon: numberField(record, "Lon", "Longitude") } : {}),
+    ...(stringField(record, "Omschrijving", "Description")
+      ? { description: stringField(record, "Omschrijving", "Description") }
+      : {}),
+    ...(stringField(record, "Coordinatenstelsel", "CoordinateSystem")
+      ? { coordinateSystem: stringField(record, "Coordinatenstelsel", "CoordinateSystem") }
+      : {}),
+    ...(numberField(record, "Lat", "Latitude") !== undefined
+      ? { lat: numberField(record, "Lat", "Latitude") }
+      : {}),
+    ...(numberField(record, "Lon", "Longitude") !== undefined
+      ? { lon: numberField(record, "Lon", "Longitude") }
+      : {}),
   };
 }
 
@@ -343,17 +371,32 @@ function toCatalogMetadata(record: unknown): RwsCatalogMetadata | undefined {
   if (!isRecord(record)) return undefined;
   const messageId = numberField(record, "AquoMetadata_MessageID", "AquoMetaData_MessageID", "MessageID");
   if (messageId === undefined) return undefined;
-  const processType = stringField(record, "ProcesType") ?? nestedStringField(record, "ProcesType", "Code", "Omschrijving");
+  const processType =
+    stringField(record, "ProcesType") ?? nestedStringField(record, "ProcesType", "Code", "Omschrijving");
   return {
     messageId,
-    ...(stringField(record, "Parameter_Wat_Omschrijving", "Omschrijving", "Description") ? { description: stringField(record, "Parameter_Wat_Omschrijving", "Omschrijving", "Description") } : {}),
-    ...(nestedStringField(record, "Compartiment", "Code") ? { compartmentCode: nestedStringField(record, "Compartiment", "Code") } : {}),
-    ...(nestedStringField(record, "Grootheid", "Code") ? { quantityCode: nestedStringField(record, "Grootheid", "Code") } : {}),
-    ...(nestedStringField(record, "Groepering", "Code") ? { groupingCode: nestedStringField(record, "Groepering", "Code") } : {}),
-    ...(nestedStringField(record, "Parameter", "Code") ? { parameterCode: nestedStringField(record, "Parameter", "Code") } : {}),
+    ...(stringField(record, "Parameter_Wat_Omschrijving", "Omschrijving", "Description")
+      ? { description: stringField(record, "Parameter_Wat_Omschrijving", "Omschrijving", "Description") }
+      : {}),
+    ...(nestedStringField(record, "Compartiment", "Code")
+      ? { compartmentCode: nestedStringField(record, "Compartiment", "Code") }
+      : {}),
+    ...(nestedStringField(record, "Grootheid", "Code")
+      ? { quantityCode: nestedStringField(record, "Grootheid", "Code") }
+      : {}),
+    ...(nestedStringField(record, "Groepering", "Code")
+      ? { groupingCode: nestedStringField(record, "Groepering", "Code") }
+      : {}),
+    ...(nestedStringField(record, "Parameter", "Code")
+      ? { parameterCode: nestedStringField(record, "Parameter", "Code") }
+      : {}),
     ...(processType ? { processType } : {}),
-    ...(nestedStringField(record, "Eenheid", "Code") ? { unitCode: nestedStringField(record, "Eenheid", "Code") } : {}),
-    ...(nestedStringField(record, "Eenheid", "Omschrijving") ? { unitLabel: nestedStringField(record, "Eenheid", "Omschrijving") } : {}),
+    ...(nestedStringField(record, "Eenheid", "Code")
+      ? { unitCode: nestedStringField(record, "Eenheid", "Code") }
+      : {}),
+    ...(nestedStringField(record, "Eenheid", "Omschrijving")
+      ? { unitLabel: nestedStringField(record, "Eenheid", "Omschrijving") }
+      : {}),
   };
 }
 
@@ -370,7 +413,9 @@ function scoreCatalogCoverage(
   let score = 0;
 
   if (options.wantedCapabilities.size > 0) {
-    const capabilityHits = coverage.capabilities.filter((capability) => options.wantedCapabilities.has(capability));
+    const capabilityHits = coverage.capabilities.filter((capability) =>
+      options.wantedCapabilities.has(capability),
+    );
     if (capabilityHits.length === 0) return undefined;
     score += capabilityHits.length * 60;
     matchedOn.push(...capabilityHits.map((capability) => `capability:${capability}`));
@@ -407,7 +452,10 @@ function scoreCatalogCoverage(
   };
 }
 
-function nearestDistanceKm(points: LonLat[], location: Pick<RwsCatalogLocation, "lat" | "lon">): number | undefined {
+function nearestDistanceKm(
+  points: LonLat[],
+  location: Pick<RwsCatalogLocation, "lat" | "lon">,
+): number | undefined {
   if (location.lat === undefined || location.lon === undefined || points.length === 0) return undefined;
   return Math.min(...points.map(([lon, lat]) => haversineKm(lat, lon, location.lat!, location.lon!)));
 }
@@ -443,7 +491,11 @@ function stringField(record: Record<string, unknown>, ...keys: string[]): string
   return undefined;
 }
 
-function nestedStringField(record: Record<string, unknown>, key: string, ...nestedKeys: string[]): string | undefined {
+function nestedStringField(
+  record: Record<string, unknown>,
+  key: string,
+  ...nestedKeys: string[]
+): string | undefined {
   const value = record[key];
   if (typeof value === "string" && value.trim()) return value.trim();
   if (!isRecord(value)) return undefined;
@@ -491,7 +543,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isCatalogCoverageArray(value: unknown): value is RwsCatalogCoverage[] {
-  return Array.isArray(value) && value.every((item) => isRecord(item) && isRecord(item.location) && isRecord(item.metadata));
+  return (
+    Array.isArray(value) &&
+    value.every((item) => isRecord(item) && isRecord(item.location) && isRecord(item.metadata))
+  );
 }
 
 function errMsg(error: unknown): string {

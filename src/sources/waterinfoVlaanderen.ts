@@ -4,8 +4,7 @@ import type { DataCapability } from "./tideSourceRegistry.js";
 import type { Bronregel, SourceResult } from "./types.js";
 
 const KIWIS_BASE_URL =
-  process.env.WATERINFO_VLAANDEREN_KIWIS_URL ??
-  "https://download.waterinfo.be/tsmdownload/KiWIS/KiWIS";
+  process.env.WATERINFO_VLAANDEREN_KIWIS_URL ?? "https://download.waterinfo.be/tsmdownload/KiWIS/KiWIS";
 
 export interface KiwisStation {
   station_id: string;
@@ -100,7 +99,9 @@ export async function getKiwisTimeseriesForStationPattern(
     const timeseries = extractKiwisTimeseries(raw);
     return {
       data: timeseries,
-      bronregels: [kiwisBronregel(`TimeseriesList ${stationNamePattern}`, `${timeseries.length} reeksen`, url)],
+      bronregels: [
+        kiwisBronregel(`TimeseriesList ${stationNamePattern}`, `${timeseries.length} reeksen`, url),
+      ],
       datagaten: [],
     };
   } catch (error) {
@@ -246,7 +247,10 @@ export function findKiwisStationCoverage(
       }),
     )
     .filter((match): match is KiwisStationCoverageMatch => match !== undefined)
-    .sort((a, b) => b.score - a.score || a.coverage.station.station_name.localeCompare(b.coverage.station.station_name))
+    .sort(
+      (a, b) =>
+        b.score - a.score || a.coverage.station.station_name.localeCompare(b.coverage.station.station_name),
+    )
     .slice(0, options.limit ?? 8);
 }
 
@@ -303,13 +307,17 @@ function scoreKiwisCoverage(
   let score = 0;
 
   if (options.wantedCapabilities.size > 0) {
-    const capabilityHits = coverage.capabilities.filter((capability) => options.wantedCapabilities.has(capability));
+    const capabilityHits = coverage.capabilities.filter((capability) =>
+      options.wantedCapabilities.has(capability),
+    );
     if (capabilityHits.length === 0) return undefined;
     score += capabilityHits.length * 60;
     matchedOn.push(...capabilityHits.map((capability) => `capability:${capability}`));
   }
 
-  const stationText = normalizeText([coverage.station.station_name, coverage.station.station_no].filter(Boolean).join(" "));
+  const stationText = normalizeText(
+    [coverage.station.station_name, coverage.station.station_no].filter(Boolean).join(" "),
+  );
   if (options.normalizedText) {
     for (const token of textTokens(stationText)) {
       if (token.length >= 4 && options.normalizedText.includes(token)) {
