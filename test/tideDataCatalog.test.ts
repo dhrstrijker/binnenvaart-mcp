@@ -133,9 +133,19 @@ describe("tide data catalog", () => {
             station_no: "01K04_MQ45",
             station_name: "Albertdok/Schelde",
             parametertype_name: "H",
+            semantics: "measurement",
+            interval_minutes: 60,
           },
         ],
-        capabilities: ["water_height_forecast"],
+        capabilities: ["water_height_measurement"],
+        water_height_semantics: {
+          forecast: 0,
+          measurement: 1,
+          threshold: 0,
+          statistic: 0,
+          status: 0,
+          unknown: 0,
+        },
       },
     ];
 

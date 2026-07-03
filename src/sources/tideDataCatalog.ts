@@ -158,7 +158,7 @@ export const OFFICIAL_DATA_STATIONS: OfficialDataStation[] = [
     authority: "Waterinfo Vlaanderen",
     source: "waterinfo-vlaanderen-kiwis",
     source_contract: sourceById("waterinfo-vlaanderen-kiwis"),
-    capabilities: ["water_height_forecast"],
+    capabilities: ["water_height_forecast", "water_height_measurement"],
     waterway_keywords: ["antwerpen", "antwerp", "schelde", "gent", "ghent", "kanaal gent-terneuzen"],
     corridor_tags: ["belgium-discovery"],
   },
@@ -439,7 +439,7 @@ function kiwisStationMatches(
       .filter(Boolean)
       .join(" "),
     routeGeometry: section.geometry,
-    capabilities: ["water_height_forecast"],
+    capabilities: ["water_height_forecast", "water_height_measurement"],
     limit: 8,
   });
   return matches.map((match: KiwisStationCoverageMatch) => ({

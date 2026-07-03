@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildKiwisStationCoverage,
+  candidateKiwisWaterLevelTimeseries,
+  classifyKiwisTimeseriesSemantics,
   extractKiwisStations,
   extractKiwisTimeseries,
   extractKiwisTimeseriesValues,
@@ -42,7 +44,7 @@ describe("Waterinfo Vlaanderen KiWIS helpers", () => {
     ]);
   });
 
-  it("parses KiWIS timeseries list responses and builds water-height coverage", () => {
+  it("parses KiWIS timeseries list responses and builds typed water-height coverage", () => {
     const coverage = buildKiwisStationCoverage(
       extractKiwisStations(stationListFixture()),
       extractKiwisTimeseries(timeseriesListFixture()),
@@ -52,13 +54,52 @@ describe("Waterinfo Vlaanderen KiWIS helpers", () => {
       expect.arrayContaining([
         expect.objectContaining({
           station: expect.objectContaining({ station_id: "0120379", station_name: "Albertdok/Schelde" }),
-          capabilities: ["water_height_forecast"],
+          capabilities: expect.arrayContaining([
+            "water_height_forecast",
+            "water_height_measurement",
+            "water_level_threshold",
+          ]),
+          water_height_semantics: expect.objectContaining({
+            forecast: 1,
+            measurement: 2,
+            threshold: 1,
+            statistic: 1,
+            status: 1,
+          }),
           timeseries: expect.arrayContaining([
-            expect.objectContaining({ ts_id: "0121323042", ts_name: "P.60", parametertype_name: "H" }),
+            expect.objectContaining({
+              ts_id: "0121323042",
+              ts_name: "P.60",
+              parametertype_name: "H",
+              semantics: "measurement",
+              interval_minutes: 60,
+            }),
+            expect.objectContaining({
+              ts_id: "01315353042",
+              ts_name: "Pv.15",
+              semantics: "forecast",
+              interval_minutes: 15,
+            }),
           ]),
         }),
       ]),
     );
+  });
+
+  it("classifies KiWIS H series semantics and selects passage water-level candidates", () => {
+    expect(classifyKiwisTimeseriesSemantics("Pv.15")).toBe("forecast");
+    expect(classifyKiwisTimeseriesSemantics("P.60")).toBe("measurement");
+    expect(classifyKiwisTimeseriesSemantics("O.Obs")).toBe("measurement");
+    expect(classifyKiwisTimeseriesSemantics("DrempelAlarm")).toBe("threshold");
+    expect(classifyKiwisTimeseriesSemantics("DagGem")).toBe("statistic");
+    expect(classifyKiwisTimeseriesSemantics("AlarmStatus")).toBe("status");
+
+    const candidates = candidateKiwisWaterLevelTimeseries(
+      extractKiwisTimeseries(timeseriesListFixture()),
+      "forecast",
+    );
+    expect(candidates.map((series) => series.ts_name)).toEqual(["Pv.15", "P.15", "P.60", "O.Obs"]);
+    expect(candidates.map((series) => series.ts_name)).not.toContain("DrempelAlarm");
   });
 
   it("finds route-relevant KiWIS coverage by text and geometry", () => {
@@ -168,6 +209,10 @@ function timeseriesListFixture() {
     ],
     ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121323042", "P.60", "01559", "H"],
     ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01315353042", "Pv.15", "01559", "H"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121321042", "O.Obs", "01559", "H"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121326042", "DrempelAlarm", "01559", "H"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121308042", "DagGem", "01559", "H"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01123506042", "AlarmStatus", "01559", "H"],
     ["Schellebelle/Blokstraat/OudeSchelde", "01IMM0106", "01408641", "01290918042", "P.15", "01559", "H"],
   ];
 }

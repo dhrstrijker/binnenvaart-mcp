@@ -42,6 +42,7 @@ import {
 import { evaluateDirectCurrent, type DirectCurrentEvaluation } from "./currentAssessment.js";
 import {
   buildKiwisStationCoverage,
+  candidateKiwisWaterLevelTimeseries,
   getKiwisStations,
   getKiwisTimeseriesForStationPattern,
   getKiwisTimeseriesValues,
@@ -307,6 +308,9 @@ export interface SectionAssessment {
     };
     ts_id: string;
     series_name?: string;
+    series_kind: KiwisTimeseries["semantics"];
+    series_interval_minutes?: number;
+    series_selection: "forecast_preferred" | "measurement_fallback";
     water_level_m: number;
     observed_at: string;
     freshness: SourceFreshnessSummary;
@@ -434,6 +438,9 @@ interface KiwisWaterLevelEvidence {
   };
   ts_id: string;
   series_name?: string;
+  series_kind: KiwisTimeseries["semantics"];
+  series_interval_minutes?: number;
+  series_selection: "forecast_preferred" | "measurement_fallback";
   water_level_m: number;
   observed_at: string;
   freshness: SourceFreshnessSummary;
@@ -856,7 +863,7 @@ async function loadKiwisSourceDiscovery(
         coverage_count: kiwisStationCoverage.length,
         note:
           kiwisStationCoverage.length > 0
-            ? "Waterinfo Vlaanderen/KiWIS station- en H-tijdreeksdekking gebruikt als officiële Belgische stationmatching."
+            ? `Waterinfo Vlaanderen/KiWIS station- en H-tijdreeksdekking gebruikt als officiële Belgische stationmatching. ${kiwisSemanticsNote(kiwisStationCoverage)}`
             : "Waterinfo Vlaanderen/KiWIS gaf geen bruikbare H-tijdreeksdekking; Belgische secties blijven een datagrens.",
       },
     ],
@@ -1120,29 +1127,63 @@ async function loadKiwisWaterLevelValues(
       (match) =>
         match.source === "waterinfo-vlaanderen-kiwis" &&
         match.code !== "vlaanderen.waterinfo.discovery" &&
-        match.capabilities.includes("water_height_forecast"),
+        (match.capabilities.includes("water_height_forecast") ||
+          match.capabilities.includes("water_height_measurement")),
     );
     if (!kiwisMatch) continue;
     const coverage = sourceDiscovery.kiwisStationCoverage.find(
       (item) => item.station.station_id === kiwisMatch.code,
     );
-    const series = coverage ? preferredKiwisWaterLevelTimeseries(coverage.timeseries) : undefined;
-    if (!series) continue;
+    const candidateSeries = coverage
+      ? candidateKiwisWaterLevelTimeseries(coverage.timeseries, "forecast").slice(0, 4)
+      : [];
+    if (!candidateSeries.length) {
+      datagaten.push({
+        code: "waterinfo-vlaanderen-kiwis-waterlevel-series-missing",
+        message: `Waterinfo Vlaanderen/KiWIS vond station ${kiwisMatch.label}, maar geen bruikbare H-verwachting of H-meting voor sectie ${section.waterwayName ?? section.segmentName ?? sectionKey(section)}. Drempel-, status- en statistiekreeksen worden niet als passagewaterstand gebruikt.`,
+        severity: "caution",
+      });
+      continue;
+    }
 
     attemptedSections += 1;
     const window = observationWindowAround(passageTime, KIWIS_WATER_LEVEL_WINDOW_MINUTES);
-    const attemptKey = `${series.ts_id}:${window.startIso}:${window.endIso}`;
-    if (attemptedSeries.has(attemptKey)) continue;
-    attemptedSeries.add(attemptKey);
-    const values = await getKiwisTimeseriesValues(series.ts_id, window.startIso, window.endIso);
-    bronregels.push(...values.bronregels);
-    datagaten.push(...softenKiwisValueDatagaten(values.datagaten));
-
-    const nearest = nearestKiwisWaterLevelValue(
-      values.data ?? [],
-      passageTime,
-      KIWIS_WATER_LEVEL_WINDOW_MINUTES,
-    );
+    let selected:
+      | {
+          series: KiwisTimeseries;
+          nearest: KiwisTimeseriesValue;
+          valuesDatagaten: Datagat[];
+          bronregels: Bronregel[];
+        }
+      | undefined;
+    for (const series of candidateSeries) {
+      const attemptKey = `${series.ts_id}:${window.startIso}:${window.endIso}`;
+      if (attemptedSeries.has(attemptKey)) continue;
+      attemptedSeries.add(attemptKey);
+      const values = await getKiwisTimeseriesValues(series.ts_id, window.startIso, window.endIso);
+      const nearest = nearestKiwisWaterLevelValue(
+        values.data ?? [],
+        passageTime,
+        KIWIS_WATER_LEVEL_WINDOW_MINUTES,
+      );
+      if (nearest) {
+        selected = {
+          series,
+          nearest,
+          valuesDatagaten: values.datagaten,
+          bronregels: values.bronregels,
+        };
+        break;
+      }
+      bronregels.push(...values.bronregels);
+      datagaten.push(...softenKiwisValueDatagaten(values.datagaten));
+    }
+    if (!selected) {
+      continue;
+    }
+    const { series, nearest } = selected;
+    bronregels.push(...selected.bronregels);
+    datagaten.push(...softenKiwisValueDatagaten(selected.valuesDatagaten));
     if (!nearest) {
       datagaten.push({
         code: "waterinfo-vlaanderen-kiwis-waterlevel-nearest-missing",
@@ -1153,7 +1194,7 @@ async function loadKiwisWaterLevelValues(
     }
     const freshness = sourceFreshnessSummary(
       "waterinfo-vlaanderen-kiwis",
-      `H-waterstand ${kiwisMatch.label}`,
+      `${kiwisWaterLevelKindLabel(series.semantics)} ${kiwisMatch.label}`,
       nearest.dateTime,
     );
     if (freshness.status !== "fresh") datagaten.push(sourceFreshnessDatagat(freshness));
@@ -1166,33 +1207,18 @@ async function loadKiwisWaterLevelValues(
       },
       ts_id: series.ts_id,
       ...(series.ts_name ? { series_name: series.ts_name } : {}),
+      series_kind: series.semantics,
+      ...(series.interval_minutes !== undefined ? { series_interval_minutes: series.interval_minutes } : {}),
+      series_selection: series.semantics === "forecast" ? "forecast_preferred" : "measurement_fallback",
       water_level_m: round2(nearest.value),
       observed_at: nearest.dateTime,
       freshness,
       rejected_as_depth_basis: true,
-      basis:
-        "Officiële Waterinfo Vlaanderen/KiWIS H-waterstand rond de sectiepassage. Deze waarde wordt niet als vaardiepte gebruikt zolang peilreferentie, bodemdiepte en datumcorrectie niet expliciet gekoppeld zijn.",
+      basis: `${kiwisWaterLevelKindLabel(series.semantics)} rond de sectiepassage. Deze waarde wordt niet als vaardiepte gebruikt zolang peilreferentie, bodemdiepte en datumcorrectie niet expliciet gekoppeld zijn.`,
     });
   }
 
   return { kiwisWaterLevelBySectionKey, kiwisWaterLevelFreshness, bronregels, datagaten };
-}
-
-function preferredKiwisWaterLevelTimeseries(timeseries: KiwisTimeseries[]): KiwisTimeseries | undefined {
-  return [...timeseries]
-    .filter((series) => normalize(series.parametertype_name ?? "") === "h")
-    .sort(
-      (a, b) => kiwisTimeseriesPriority(a) - kiwisTimeseriesPriority(b) || a.ts_id.localeCompare(b.ts_id),
-    )[0];
-}
-
-function kiwisTimeseriesPriority(series: KiwisTimeseries): number {
-  const name = normalize(series.ts_name ?? "");
-  if (name.startsWith("pv")) return 0;
-  if (name === "p.15") return 1;
-  if (name === "p.60") return 2;
-  if (name.startsWith("p")) return 3;
-  return 9;
 }
 
 function nearestKiwisWaterLevelValue(
@@ -1211,6 +1237,28 @@ function nearestKiwisWaterLevelValue(
     if (!best || deltaMs < best.deltaMs) best = { value, deltaMs };
   }
   return best?.value;
+}
+
+function kiwisSemanticsNote(coverage: KiwisStationCoverage[]): string {
+  const totals = coverage.reduce(
+    (acc, item) => {
+      acc.forecast += item.water_height_semantics.forecast;
+      acc.measurement += item.water_height_semantics.measurement;
+      acc.threshold += item.water_height_semantics.threshold;
+      acc.statistic += item.water_height_semantics.statistic;
+      acc.status += item.water_height_semantics.status;
+      acc.unknown += item.water_height_semantics.unknown;
+      return acc;
+    },
+    { forecast: 0, measurement: 0, threshold: 0, statistic: 0, status: 0, unknown: 0 },
+  );
+  return `H-series: ${totals.forecast} verwachting, ${totals.measurement} meting, ${totals.threshold} drempel, ${totals.statistic} statistiek, ${totals.status} status, ${totals.unknown} onbekend.`;
+}
+
+function kiwisWaterLevelKindLabel(kind: KiwisTimeseries["semantics"]): string {
+  if (kind === "forecast") return "H-waterstandsverwachting";
+  if (kind === "measurement") return "H-waterstandsmeting";
+  return "H-waterstand";
 }
 
 function softenKiwisValueDatagaten(gaps: Datagat[]): Datagat[] {
@@ -2071,6 +2119,11 @@ function sectionAssessment(
             station: waterLevelEvidence.station,
             ts_id: waterLevelEvidence.ts_id,
             ...(waterLevelEvidence.series_name ? { series_name: waterLevelEvidence.series_name } : {}),
+            series_kind: waterLevelEvidence.series_kind,
+            ...(waterLevelEvidence.series_interval_minutes !== undefined
+              ? { series_interval_minutes: waterLevelEvidence.series_interval_minutes }
+              : {}),
+            series_selection: waterLevelEvidence.series_selection,
             water_level_m: waterLevelEvidence.water_level_m,
             observed_at: waterLevelEvidence.observed_at,
             freshness: waterLevelEvidence.freshness,

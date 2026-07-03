@@ -1360,7 +1360,7 @@ describe("getTideDepartureWindow", () => {
       code: "0120379",
       label: "Albertdok/Schelde",
       source: "waterinfo-vlaanderen-kiwis",
-      capabilities: ["water_height_forecast"],
+      capabilities: expect.arrayContaining(["water_height_forecast", "water_height_measurement"]),
       matched_on: expect.arrayContaining(["waterinfo-vlaanderen-kiwis", "geometry"]),
     });
     expect(result.data?.route_sections[0]?.water_level_evidence).toMatchObject({
@@ -1371,6 +1371,9 @@ describe("getTideDepartureWindow", () => {
       },
       ts_id: "01315353042",
       series_name: "Pv.15",
+      series_kind: "forecast",
+      series_interval_minutes: 15,
+      series_selection: "forecast_preferred",
       water_level_m: 4.42,
       observed_at: "2026-07-03T10:00:00+02:00",
       rejected_as_depth_basis: true,
@@ -1385,7 +1388,7 @@ describe("getTideDepartureWindow", () => {
       expect.arrayContaining([
         expect.objectContaining({
           source_id: "waterinfo-vlaanderen-kiwis",
-          subject: "H-waterstand Albertdok/Schelde",
+          subject: "H-waterstandsverwachting Albertdok/Schelde",
           observed_at: "2026-07-03T10:00:00+02:00",
         }),
       ]),

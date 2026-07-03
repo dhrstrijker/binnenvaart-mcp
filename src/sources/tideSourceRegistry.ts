@@ -1,5 +1,7 @@
 export type DataCapability =
   | "water_height_forecast"
+  | "water_height_measurement"
+  | "water_level_threshold"
   | "tide_extrema"
   | "current_speed"
   | "current_direction"
@@ -113,7 +115,7 @@ export const SOURCE_REGISTRY: SourceRegistryEntry[] = [
     label: "Waterinfo Vlaanderen KiWIS",
     authority: "Waterinfo Vlaanderen",
     country_codes: ["BE"],
-    capabilities: ["water_height_forecast"],
+    capabilities: ["water_height_forecast", "water_height_measurement", "water_level_threshold"],
     documentation_url: "https://waterinfo.vlaanderen.be/",
     endpoints: ["https://waterinfo.vlaanderen.be/"],
     freshness: {
@@ -232,16 +234,40 @@ export const PARAMETER_CONTRACTS: ParameterContract[] = [
       "Grouped tide extremes include water level and high/low-water type; request the groepering explicitly.",
   },
   {
-    id: "waterinfo-vlaanderen-water-height",
+    id: "waterinfo-vlaanderen-water-height-forecast",
     source_id: "waterinfo-vlaanderen-kiwis",
     capability: "water_height_forecast",
-    label: "Vlaamse waterstand / verwachting",
+    label: "Vlaamse waterstandsverwachting",
     kiwis: {
       parameter_code: "H",
-      status: "planned",
+      status: "discovered",
     },
     interpretation_note:
-      "Use only after station and parameter discovery; authority boundary evidence before that is not enough for a go/no-go.",
+      "Use forecast-like H time-series such as Pv.* for planned route passage water-level context; still not a depth basis without datum and bodemdiepte.",
+  },
+  {
+    id: "waterinfo-vlaanderen-water-height-measurement",
+    source_id: "waterinfo-vlaanderen-kiwis",
+    capability: "water_height_measurement",
+    label: "Vlaamse gemeten waterstand",
+    kiwis: {
+      parameter_code: "H",
+      status: "discovered",
+    },
+    interpretation_note:
+      "Use measurement-like H time-series such as P.* or O.* as local water-level context when no forecast series is available; do not present it as forecast or depth basis.",
+  },
+  {
+    id: "waterinfo-vlaanderen-water-level-threshold",
+    source_id: "waterinfo-vlaanderen-kiwis",
+    capability: "water_level_threshold",
+    label: "Vlaamse waterstandsdrempel",
+    kiwis: {
+      parameter_code: "H",
+      status: "discovered",
+    },
+    interpretation_note:
+      "Threshold/status series such as Drempel* or AlarmStatus are alert context only and must not be selected as passage water-level values.",
   },
   {
     id: "euris-route-depth-basis",

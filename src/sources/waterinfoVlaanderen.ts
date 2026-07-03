@@ -22,12 +22,15 @@ export interface KiwisTimeseries {
   station_name: string;
   parametertype_name?: string;
   parametertype_id?: string;
+  semantics: KiwisTimeseriesSemantics;
+  interval_minutes?: number;
 }
 
 export interface KiwisStationCoverage {
   station: KiwisStation;
   timeseries: KiwisTimeseries[];
   capabilities: DataCapability[];
+  water_height_semantics: KiwisWaterHeightSemanticsSummary;
 }
 
 export interface KiwisStationCoverageMatch {
@@ -42,6 +45,23 @@ export interface KiwisTimeseriesValue {
   ts_id: string;
   dateTime: string;
   value: number;
+}
+
+export type KiwisTimeseriesSemantics =
+  | "forecast"
+  | "measurement"
+  | "threshold"
+  | "statistic"
+  | "status"
+  | "unknown";
+
+export interface KiwisWaterHeightSemanticsSummary {
+  forecast: number;
+  measurement: number;
+  threshold: number;
+  statistic: number;
+  status: number;
+  unknown: number;
 }
 
 export function kiwisUrl(params: Record<string, string | number | boolean | undefined>): string {
@@ -193,6 +213,10 @@ export function extractKiwisTimeseries(raw: unknown): KiwisTimeseries[] {
         ...(str(row.ts_name) ? { ts_name: str(row.ts_name) } : {}),
         ...(str(row.parametertype_name) ? { parametertype_name: str(row.parametertype_name) } : {}),
         ...(str(row.parametertype_id) ? { parametertype_id: str(row.parametertype_id) } : {}),
+        semantics: classifyKiwisTimeseriesSemantics(str(row.ts_name)),
+        ...(kiwisTimeseriesIntervalMinutes(str(row.ts_name)) !== undefined
+          ? { interval_minutes: kiwisTimeseriesIntervalMinutes(str(row.ts_name)) }
+          : {}),
       };
     })
     .filter((timeseries): timeseries is KiwisTimeseries => timeseries !== undefined);
@@ -217,6 +241,7 @@ export function buildKiwisStationCoverage(
             station,
             timeseries: stationTimeseries,
             capabilities,
+            water_height_semantics: summarizeKiwisWaterHeightSemantics(stationTimeseries),
           }
         : undefined;
     })
@@ -288,10 +313,115 @@ function rowsFromKiwisTable(raw: unknown): Array<Record<string, unknown>> {
 
 function capabilitiesForKiwisTimeseries(timeseries: KiwisTimeseries[]): DataCapability[] {
   const capabilities = new Set<DataCapability>();
-  if (timeseries.some((series) => normalizeText(series.parametertype_name ?? "") === "h")) {
+  if (
+    timeseries.some(
+      (series) => normalizeText(series.parametertype_name ?? "") === "h" && series.semantics === "forecast",
+    )
+  ) {
     capabilities.add("water_height_forecast");
   }
+  if (
+    timeseries.some(
+      (series) =>
+        normalizeText(series.parametertype_name ?? "") === "h" && series.semantics === "measurement",
+    )
+  ) {
+    capabilities.add("water_height_measurement");
+  }
+  if (
+    timeseries.some(
+      (series) => normalizeText(series.parametertype_name ?? "") === "h" && series.semantics === "threshold",
+    )
+  ) {
+    capabilities.add("water_level_threshold");
+  }
   return [...capabilities];
+}
+
+export function candidateKiwisWaterLevelTimeseries(
+  timeseries: KiwisTimeseries[],
+  preference: "forecast" | "measurement" = "forecast",
+): KiwisTimeseries[] {
+  const preferred: KiwisTimeseriesSemantics[] =
+    preference === "measurement" ? ["measurement", "forecast"] : ["forecast", "measurement"];
+  return [...timeseries]
+    .filter((series) => isUsableKiwisWaterLevelSeries(series))
+    .sort(
+      (a, b) =>
+        semanticRank(a.semantics, preferred) - semanticRank(b.semantics, preferred) ||
+        intervalRank(a.interval_minutes) - intervalRank(b.interval_minutes) ||
+        (a.ts_name ?? "").localeCompare(b.ts_name ?? "") ||
+        a.ts_id.localeCompare(b.ts_id),
+    );
+}
+
+export function classifyKiwisTimeseriesSemantics(
+  tsName: string | undefined,
+): KiwisTimeseriesSemantics {
+  const name = normalizeText(tsName ?? "");
+  if (!name) return "unknown";
+  if (name === "alarmstatus") return "status";
+  if (name.startsWith("drempel")) return "threshold";
+  if (
+    name.startsWith("dag") ||
+    name.startsWith("maand") ||
+    name.includes("jaargem") ||
+    name.includes("jaarmax") ||
+    name.includes("jaarmin") ||
+    name.startsWith("meetperiode")
+  ) {
+    return "statistic";
+  }
+  if (/^pv(?:\.|$)/.test(name)) return "forecast";
+  if (/^p(?:\.|$)/.test(name) || /^o(?:\.|$)/.test(name)) return "measurement";
+  return "unknown";
+}
+
+function isUsableKiwisWaterLevelSeries(series: KiwisTimeseries): boolean {
+  return (
+    normalizeText(series.parametertype_name ?? "") === "h" &&
+    (series.semantics === "forecast" || series.semantics === "measurement")
+  );
+}
+
+function summarizeKiwisWaterHeightSemantics(
+  timeseries: KiwisTimeseries[],
+): KiwisWaterHeightSemanticsSummary {
+  const summary: KiwisWaterHeightSemanticsSummary = {
+    forecast: 0,
+    measurement: 0,
+    threshold: 0,
+    statistic: 0,
+    status: 0,
+    unknown: 0,
+  };
+  for (const series of timeseries) {
+    if (normalizeText(series.parametertype_name ?? "") !== "h") continue;
+    summary[series.semantics] += 1;
+  }
+  return summary;
+}
+
+function kiwisTimeseriesIntervalMinutes(tsName: string | undefined): number | undefined {
+  const match = normalizeText(tsName ?? "").match(/\.(\d+)$/);
+  if (!match?.[1]) return undefined;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function semanticRank(
+  semantics: KiwisTimeseriesSemantics,
+  preferred: KiwisTimeseriesSemantics[],
+): number {
+  const index = preferred.indexOf(semantics);
+  return index === -1 ? 99 : index;
+}
+
+function intervalRank(minutes: number | undefined): number {
+  if (minutes === 15) return 0;
+  if (minutes === 60) return 1;
+  if (minutes === 1) return 2;
+  return 9;
 }
 
 function scoreKiwisCoverage(
