@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getVoyage } from "../src/sources/euris.js";
 import { mockFetch } from "./helpers.js";
@@ -49,6 +50,9 @@ const ok = (its: unknown[]) => ({
   ErrorMessage: null,
   ErrorTags: null,
 });
+
+const routeFixture = () =>
+  JSON.parse(readFileSync(new URL("./fixtures/route-calculate.json", import.meta.url), "utf8")) as unknown;
 
 describe("getVoyage", () => {
   it("parses a voyage and keeps only locks + bridges as objects", async () => {
@@ -117,6 +121,144 @@ describe("getVoyage", () => {
     ]);
     // the lock is still surfaced as a located object marker.
     expect(v?.objecten[0]).toMatchObject({ naam: "Sluis X", type: "sluis", lat: 51.86, lon: 5.8 });
+  });
+
+  it("preserves EuRIS segment fields as route sections", async () => {
+    const encoded = "_pt{aB_x`dJ_pR~s`B_pR~s`B";
+    mockFetch(() =>
+      ok([
+        itinerary({
+          Legs: [
+            {
+              FromObjectName: "Europoort",
+              ToObjectName: "Amsterdam",
+              Segments: [
+                {
+                  SegmentName: "Nieuwe Maas - Lek",
+                  WaterwayName: "Nieuwe Maas",
+                  FairwaySectionId: "FS-123",
+                  Authority: "Rijkswaterstaat",
+                  Direction: "UPSTREAM",
+                  ETA: "2026-07-03T08:30:00Z",
+                  ETD: "2026-07-03T08:00:00Z",
+                  Length: 12500,
+                  Dimensions: { Draught: 520, Height: 900, Width: 1500, Length: 13500, CEMT: "VIb" },
+                  CountryCodes: ["NL"],
+                  CompressedGeometry: encoded,
+                  Events: [
+                    {
+                      EventType: "Bridge",
+                      ObjectName: "Brug op sectie",
+                      EventMessage: "passage",
+                      ISRS: "NL555555555555555555",
+                      ETA: "2026-07-03T08:15:00Z",
+                      ETD: "2026-07-03T08:10:00Z",
+                      Latitude: 51.86,
+                      Longitude: 5.8,
+                      Dimensions: { Height: 900 },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      ]),
+    );
+
+    const r = await getVoyage(ISRS_A, ISRS_B);
+    expect(r.data?.varianten[0]?.secties[0]).toMatchObject({
+      legIndex: 0,
+      segmentIndex: 0,
+      segmentName: "Nieuwe Maas - Lek",
+      waterwayName: "Nieuwe Maas",
+      fairwaySectionId: "FS-123",
+      authority: "Rijkswaterstaat",
+      direction: "UPSTREAM",
+      eta: "2026-07-03T08:30:00Z",
+      etd: "2026-07-03T08:00:00Z",
+      lengthM: 12500,
+      dimensions: { diepgangCm: 520, hoogteCm: 900, breedteCm: 1500, lengteCm: 13500, cemt: "VIb" },
+      countryCodes: ["NL"],
+      geometry: [
+        [5.85, 51.85],
+        [5.8, 51.86],
+        [5.75, 51.87],
+      ],
+      events: [
+        {
+          type: "Bridge",
+          naam: "Brug op sectie",
+          message: "passage",
+          isrs: "NL555555555555555555",
+          eta: "2026-07-03T08:15:00Z",
+          etd: "2026-07-03T08:10:00Z",
+          lat: 51.86,
+          lon: 5.8,
+          dimensions: { hoogteCm: 900 },
+        },
+      ],
+    });
+    expect(r.data?.varianten[0]?.secties[0]?.routeBearingDeg).toBeDefined();
+  });
+
+  it("preserves EuRIS leg segments as route secties", async () => {
+    mockFetch(() => routeFixture());
+    const r = await getVoyage(ISRS_A, ISRS_B);
+    const secties = r.data?.varianten[0]?.secties;
+
+    expect(secties).toHaveLength(2);
+    expect(secties?.[0]).toMatchObject({
+      legIndex: 0,
+      segmentIndex: 0,
+      segmentName: "De Vlaamse Waterweg nv",
+      waterwayName: "Albertkanaal",
+      fairwaySectionId: "BE0204700000",
+      authority: "De Vlaamse Waterweg nv",
+      direction: "UPSTREAM",
+      eta: "2026-06-05T08:00:00",
+      etd: "2026-06-05T08:00:00",
+      lengthM: 0,
+      dimensions: {
+        hoogteCm: 760,
+        breedteCm: 1500,
+        diepgangCm: 340,
+        lengteCm: 13500,
+      },
+      countryCodes: ["BE"],
+      geometry: [],
+      events: [],
+    });
+    expect(secties?.[1]).toMatchObject({
+      legIndex: 0,
+      segmentIndex: 1,
+      segmentName: "Albertkanaal",
+      waterwayName: "Albertkanaal",
+      fairwaySectionId: "BE0204700000",
+      authority: "De Vlaamse Waterweg nv",
+      direction: "UPSTREAM",
+      eta: "2026-06-05T12:36:18.389",
+      etd: "2026-06-05T08:00:00",
+      lengthM: 43693,
+      countryCodes: ["BE"],
+    });
+    expect(secties?.[1]?.geometry[0]).toEqual([4.5378, 51.22665]);
+    expect(secties?.[1]?.routeBearingDeg).toEqual(expect.any(Number));
+    expect(secties?.[1]?.events[0]).toMatchObject({
+      type: "Lock",
+      naam: "Sluis Wijnegem",
+      isrs: ISRS_A,
+      eta: "2026-06-05T08:00:00",
+      etd: "2026-06-05T08:32:00",
+      absoluteDistanceM: 0,
+      dimensions: {
+        hoogteCm: 760,
+        breedteCm: 1500,
+        diepgangCm: 340,
+        lengteCm: 760,
+        cemt: "VIb",
+      },
+    });
   });
 
   it("dedupes identical FASTEST/SHORTEST itineraries into one", async () => {

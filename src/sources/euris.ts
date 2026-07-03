@@ -1,4 +1,5 @@
 import { getJson, HttpError, postJson } from "../http/jsonHttp.js";
+import { buildRouteSections, type RouteSection } from "./routeSections.js";
 import type { DataStatus, Datagat, SourceResult } from "./types.js";
 
 // EuRIS open data needs no key. The base URL and an OPTIONAL token are env-driven
@@ -312,6 +313,7 @@ export interface RouteVariant {
   maxAfmetingen?: MaxDimensions; // permissible dimensions on this route (cm)
   objecten: RouteObject[]; // locks and bridges along the way, in order
   geometrie?: [number, number][]; // route line as [lon, lat] vertices, decimated for transport
+  secties: RouteSection[]; // route sections from Itineraries[].Legs[].Segments[]
 }
 
 export interface MaxDimensions {
@@ -548,6 +550,7 @@ const ROUTE_GEOMETRY_MAX_POINTS = 64;
 function toVariant(itin: Itinerary): RouteVariant {
   const objecten: RouteObject[] = [];
   const punten: [number, number][] = [];
+  const secties = buildRouteSections(itin.Legs ?? []);
   for (const leg of itin.Legs ?? []) {
     for (const seg of leg.Segments ?? []) {
       // The dense fairway line lives in the segment's encoded geometry; decode it
@@ -586,6 +589,7 @@ function toVariant(itin: Itinerary): RouteVariant {
     getijdeafhankelijk: itin.TideDependent === true,
     maxAfmetingen: toMaxDimensions(itin.AllowedDimensions),
     objecten,
+    secties,
     ...(geometrie.length >= 2 ? { geometrie } : {}),
   };
 }
