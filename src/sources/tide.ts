@@ -1869,7 +1869,14 @@ function resolveArrivalBy(value: string | undefined, referenceIso: string | unde
 
   const [, hour, minute, second = "00"] = timeMatch;
   const date = amsterdamDateParts(reference);
-  return toUtcIsoFromAmsterdamLocal(date.year, date.month, date.day, Number(hour), Number(minute), Number(second));
+  return toUtcIsoFromAmsterdamLocal(
+    date.year,
+    date.month,
+    date.day,
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
 }
 
 function amsterdamDateParts(date: Date): { year: number; month: number; day: number } {
@@ -1895,7 +1902,14 @@ function toUtcIsoFromAmsterdamLocal(
   if (![year, month, day, hour, minute, second].every(Number.isFinite)) return undefined;
   const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
   const local = amsterdamDateTimeParts(utcGuess);
-  const localAsUtcMs = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second);
+  const localAsUtcMs = Date.UTC(
+    local.year,
+    local.month - 1,
+    local.day,
+    local.hour,
+    local.minute,
+    local.second,
+  );
   const offsetMs = localAsUtcMs - utcGuess.getTime();
   return new Date(Date.UTC(year, month - 1, day, hour, minute, second) - offsetMs).toISOString();
 }
@@ -2000,12 +2014,14 @@ function windowDecisionBasis(input: {
 }): string[] {
   const basis: string[] = [];
   if (input.arrivalConstraint === "meets") basis.push("Voldoet aan de aankomstconstraint.");
-  if (input.arrivalConstraint === "misses") basis.push("Mist de aankomstconstraint bij vertrek in dit venster.");
+  if (input.arrivalConstraint === "misses")
+    basis.push("Mist de aankomstconstraint bij vertrek in dit venster.");
   if (input.arrivalConstraint === "unknown") basis.push("Aankomstconstraint kon niet worden beoordeeld.");
   if (input.depthBlocking > 0) basis.push(`${input.depthBlocking} sectie(s) blokkeren op diepte.`);
   if (input.depthWarning > 0) basis.push(`${input.depthWarning} sectie(s) hebben krappe dieptemarge.`);
   if (input.againstCurrent > 0) basis.push(`${input.againstCurrent} sectie(s) vallen in tegenstroom.`);
-  if (input.unknownCurrent > 0) basis.push(`${input.unknownCurrent} sectie(s) hebben onbekende stroomstatus.`);
+  if (input.unknownCurrent > 0)
+    basis.push(`${input.unknownCurrent} sectie(s) hebben onbekende stroomstatus.`);
   if (input.slack > 0) basis.push(`${input.slack} sectie(s) liggen rond kentering/slap water.`);
   if (input.withCurrent > 0) basis.push(`${input.withCurrent} sectie(s) vallen in mee-stroomfase.`);
   if (!basis.length && input.controllingSections.length === 0) {

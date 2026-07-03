@@ -241,10 +241,7 @@ export function extractKiwisTimeseries(raw: unknown): KiwisTimeseries[] {
         ...(str(row.parametertype_name) ? { parametertype_name: str(row.parametertype_name) } : {}),
         ...(str(row.parametertype_id) ? { parametertype_id: str(row.parametertype_id) } : {}),
         semantics: classifyKiwisTimeseriesSemantics(str(row.ts_name)),
-        parameter_semantics: classifyKiwisParameterSemantics(
-          str(row.parametertype_name),
-          str(row.ts_name),
-        ),
+        parameter_semantics: classifyKiwisParameterSemantics(str(row.parametertype_name), str(row.ts_name)),
         ...(kiwisTimeseriesIntervalMinutes(str(row.ts_name)) !== undefined
           ? { interval_minutes: kiwisTimeseriesIntervalMinutes(str(row.ts_name)) }
           : {}),
@@ -396,9 +393,7 @@ export function candidateKiwisWaterLevelTimeseries(
     );
 }
 
-export function classifyKiwisTimeseriesSemantics(
-  tsName: string | undefined,
-): KiwisTimeseriesSemantics {
+export function classifyKiwisTimeseriesSemantics(tsName: string | undefined): KiwisTimeseriesSemantics {
   const name = normalizeText(tsName ?? "");
   if (!name) return "unknown";
   if (name === "alarmstatus") return "status";
@@ -477,9 +472,7 @@ function isUsableKiwisWaterLevelSeries(series: KiwisTimeseries): boolean {
   );
 }
 
-function summarizeKiwisWaterHeightSemantics(
-  timeseries: KiwisTimeseries[],
-): KiwisWaterHeightSemanticsSummary {
+function summarizeKiwisWaterHeightSemantics(timeseries: KiwisTimeseries[]): KiwisWaterHeightSemanticsSummary {
   const summary: KiwisWaterHeightSemanticsSummary = {
     forecast: 0,
     measurement: 0,
@@ -495,9 +488,7 @@ function summarizeKiwisWaterHeightSemantics(
   return summary;
 }
 
-function summarizeKiwisParameterSemantics(
-  timeseries: KiwisTimeseries[],
-): KiwisParameterSemanticsSummary {
+function summarizeKiwisParameterSemantics(timeseries: KiwisTimeseries[]): KiwisParameterSemanticsSummary {
   const summary: KiwisParameterSemanticsSummary = {
     water_height: 0,
     discharge: 0,
@@ -521,10 +512,7 @@ function kiwisTimeseriesIntervalMinutes(tsName: string | undefined): number | un
   return Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
-function semanticRank(
-  semantics: KiwisTimeseriesSemantics,
-  preferred: KiwisTimeseriesSemantics[],
-): number {
+function semanticRank(semantics: KiwisTimeseriesSemantics, preferred: KiwisTimeseriesSemantics[]): number {
   const index = preferred.indexOf(semantics);
   return index === -1 ? 99 : index;
 }
