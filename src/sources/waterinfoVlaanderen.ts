@@ -22,6 +22,7 @@ export interface KiwisTimeseries {
   station_name: string;
   parametertype_name?: string;
   parametertype_id?: string;
+  unit?: string;
   semantics: KiwisTimeseriesSemantics;
   parameter_semantics: KiwisParameterSemantics;
   interval_minutes?: number;
@@ -189,7 +190,7 @@ export async function getKiwisTimeseriesValues(
           : [
               {
                 code: "waterinfo-vlaanderen-kiwis-values-empty",
-                message: `Waterinfo Vlaanderen/KiWIS gaf geen H-waterstandwaarden voor tijdreeks ${tsId} in de gevraagde passagewindow.`,
+                message: `Waterinfo Vlaanderen/KiWIS gaf geen tijdreekswaarden voor tijdreeks ${tsId} in de gevraagde passagewindow.`,
                 severity: "caution",
               },
             ],
@@ -200,7 +201,7 @@ export async function getKiwisTimeseriesValues(
       datagaten: [
         {
           code: "waterinfo-vlaanderen-kiwis-values-api-failed",
-          message: `Waterinfo Vlaanderen/KiWIS H-waterstandwaarden konden niet worden opgehaald: ${errMsg(error)}`,
+          message: `Waterinfo Vlaanderen/KiWIS tijdreekswaarden konden niet worden opgehaald: ${errMsg(error)}`,
           severity: "blocking",
         },
       ],
@@ -240,6 +241,7 @@ export function extractKiwisTimeseries(raw: unknown): KiwisTimeseries[] {
         ...(str(row.ts_name) ? { ts_name: str(row.ts_name) } : {}),
         ...(str(row.parametertype_name) ? { parametertype_name: str(row.parametertype_name) } : {}),
         ...(str(row.parametertype_id) ? { parametertype_id: str(row.parametertype_id) } : {}),
+        ...(kiwisUnit(row) ? { unit: kiwisUnit(row) } : {}),
         semantics: classifyKiwisTimeseriesSemantics(str(row.ts_name)),
         parameter_semantics: classifyKiwisParameterSemantics(str(row.parametertype_name), str(row.ts_name)),
         ...(kiwisTimeseriesIntervalMinutes(str(row.ts_name)) !== undefined
@@ -393,6 +395,22 @@ export function candidateKiwisWaterLevelTimeseries(
     );
 }
 
+export function candidateKiwisCurrentTimeseries(
+  timeseries: KiwisTimeseries[],
+  parameter: "current_speed" | "current_direction",
+): KiwisTimeseries[] {
+  return [...timeseries]
+    .filter((series) => isUsableKiwisCurrentSeries(series, parameter))
+    .sort(
+      (a, b) =>
+        semanticRank(a.semantics, ["measurement", "forecast", "unknown"]) -
+          semanticRank(b.semantics, ["measurement", "forecast", "unknown"]) ||
+        intervalRank(a.interval_minutes) - intervalRank(b.interval_minutes) ||
+        (a.ts_name ?? "").localeCompare(b.ts_name ?? "") ||
+        a.ts_id.localeCompare(b.ts_id),
+    );
+}
+
 export function classifyKiwisTimeseriesSemantics(tsName: string | undefined): KiwisTimeseriesSemantics {
   const name = normalizeText(tsName ?? "");
   if (!name) return "unknown";
@@ -472,6 +490,16 @@ function isUsableKiwisWaterLevelSeries(series: KiwisTimeseries): boolean {
   );
 }
 
+function isUsableKiwisCurrentSeries(
+  series: KiwisTimeseries,
+  parameter: "current_speed" | "current_direction",
+): boolean {
+  return (
+    series.parameter_semantics === parameter &&
+    !["threshold", "statistic", "status"].includes(series.semantics)
+  );
+}
+
 function summarizeKiwisWaterHeightSemantics(timeseries: KiwisTimeseries[]): KiwisWaterHeightSemanticsSummary {
   const summary: KiwisWaterHeightSemanticsSummary = {
     forecast: 0,
@@ -510,6 +538,18 @@ function kiwisTimeseriesIntervalMinutes(tsName: string | undefined): number | un
   if (!match?.[1]) return undefined;
   const value = Number(match[1]);
   return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function kiwisUnit(row: Record<string, unknown>): string | undefined {
+  return (
+    str(row.ts_unitsymbol) ||
+    str(row.ts_unit_symbol) ||
+    str(row.ts_unitname) ||
+    str(row.ts_unit_name) ||
+    str(row.unit_symbol) ||
+    str(row.unit) ||
+    str(row.units)
+  );
 }
 
 function semanticRank(semantics: KiwisTimeseriesSemantics, preferred: KiwisTimeseriesSemantics[]): number {

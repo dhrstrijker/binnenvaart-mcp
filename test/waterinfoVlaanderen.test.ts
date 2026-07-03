@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildKiwisStationCoverage,
+  candidateKiwisCurrentTimeseries,
   candidateKiwisWaterLevelTimeseries,
   classifyKiwisParameterSemantics,
   classifyKiwisTimeseriesSemantics,
@@ -102,12 +103,14 @@ describe("Waterinfo Vlaanderen KiWIS helpers", () => {
             expect.objectContaining({
               ts_id: "0199992042",
               parametertype_name: "V",
+              unit: "m/s",
               parameter_semantics: "current_speed",
             }),
             expect.objectContaining({
               ts_id: "0199993042",
               ts_name: "R",
               parametertype_name: "Stroomrichting",
+              unit: "graad",
               parameter_semantics: "current_direction",
             }),
             expect.objectContaining({
@@ -144,6 +147,17 @@ describe("Waterinfo Vlaanderen KiWIS helpers", () => {
     expect(candidates.map((series) => series.ts_name)).toEqual(["Pv.15", "P.15", "P.60", "O.Obs"]);
     expect(candidates.map((series) => series.parametertype_name)).not.toContain("Q");
     expect(candidates.map((series) => series.ts_name)).not.toContain("DrempelAlarm");
+    expect(
+      candidateKiwisCurrentTimeseries(extractKiwisTimeseries(timeseriesListFixture()), "current_speed").map(
+        (series) => series.ts_id,
+      ),
+    ).toEqual(["0199992042"]);
+    expect(
+      candidateKiwisCurrentTimeseries(
+        extractKiwisTimeseries(timeseriesListFixture()),
+        "current_direction",
+      ).map((series) => series.ts_id),
+    ).toEqual(["0199993042"]);
   });
 
   it("finds route-relevant KiWIS coverage by text and geometry", () => {
@@ -250,17 +264,27 @@ function timeseriesListFixture() {
       "ts_name",
       "parametertype_id",
       "parametertype_name",
+      "ts_unitsymbol",
     ],
-    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121323042", "P.60", "01559", "H"],
-    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01315353042", "Pv.15", "01559", "H"],
-    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121321042", "O.Obs", "01559", "H"],
-    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121326042", "DrempelAlarm", "01559", "H"],
-    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121308042", "DagGem", "01559", "H"],
-    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01123506042", "AlarmStatus", "01559", "H"],
-    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199991042", "P.15", "Q", "Q"],
-    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199992042", "P.15", "V", "V"],
-    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199993042", "R", "R", "Stroomrichting"],
-    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199994042", "P.15", "01521", "Vdc"],
-    ["Schellebelle/Blokstraat/OudeSchelde", "01IMM0106", "01408641", "01290918042", "P.15", "01559", "H"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121323042", "P.60", "01559", "H", "m"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01315353042", "Pv.15", "01559", "H", "m"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121321042", "O.Obs", "01559", "H", "m"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121326042", "DrempelAlarm", "01559", "H", "m"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121308042", "DagGem", "01559", "H", "m"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01123506042", "AlarmStatus", "01559", "H", ""],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199991042", "P.15", "Q", "Q", "m3/s"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199992042", "P.15", "V", "V", "m/s"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199993042", "R", "R", "Stroomrichting", "graad"],
+    ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199994042", "P.15", "01521", "Vdc", ""],
+    [
+      "Schellebelle/Blokstraat/OudeSchelde",
+      "01IMM0106",
+      "01408641",
+      "01290918042",
+      "P.15",
+      "01559",
+      "H",
+      "m",
+    ],
   ];
 }

@@ -1614,12 +1614,44 @@ describe("getTideDepartureWindow", () => {
             "ts_name",
             "parametertype_id",
             "parametertype_name",
+            "ts_unitsymbol",
           ],
-          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121323042", "P.60", "01559", "H"],
-          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01315353042", "Pv.15", "01559", "H"],
+          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121323042", "P.60", "01559", "H", "m"],
+          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01315353042", "Pv.15", "01559", "H", "m"],
+          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199992042", "P.15", "V", "V", "m/s"],
+          [
+            "Albertdok/Schelde",
+            "01K04_MQ45",
+            "0120379",
+            "0199993042",
+            "P.15",
+            "R",
+            "Stroomrichting",
+            "graad",
+          ],
         ];
       }
       if (url.includes("getTimeseriesValues")) {
+        if (decoded.includes("ts_id=0199992042")) {
+          return [
+            {
+              ts_id: "0199992042",
+              rows: "1",
+              columns: "Timestamp,Value",
+              data: [["2026-07-03T10:00:00+02:00", "0.24"]],
+            },
+          ];
+        }
+        if (decoded.includes("ts_id=0199993042")) {
+          return [
+            {
+              ts_id: "0199993042",
+              rows: "1",
+              columns: "Timestamp,Value",
+              data: [["2026-07-03T10:00:00+02:00", "250"]],
+            },
+          ];
+        }
         return [
           {
             ts_id: "01315353042",
@@ -1666,7 +1698,12 @@ describe("getTideDepartureWindow", () => {
       code: "0120379",
       label: "Albertdok/Schelde",
       source: "waterinfo-vlaanderen-kiwis",
-      capabilities: expect.arrayContaining(["water_height_forecast", "water_height_measurement"]),
+      capabilities: expect.arrayContaining([
+        "water_height_forecast",
+        "water_height_measurement",
+        "current_speed",
+        "current_direction",
+      ]),
       matched_on: expect.arrayContaining(["waterinfo-vlaanderen-kiwis", "geometry"]),
     });
     expect(result.data?.route_sections[0]?.water_level_evidence).toMatchObject({
@@ -1690,11 +1727,34 @@ describe("getTideDepartureWindow", () => {
     expect(result.data?.route_sections[0]?.missing_data_codes).not.toContain(
       "tide-departure-section-waterlevel-values-missing",
     );
+    expect(result.data?.route_sections[0]?.missing_data_codes).not.toContain(
+      "tide-departure-section-current-direct-data-missing",
+    );
+    expect(result.data?.route_sections[0]).toMatchObject({
+      current_status: "with",
+      current_evidence: {
+        tier: "official_current",
+        status: "with",
+        source: "Waterinfo Vlaanderen KiWIS stroomsnelheid/stroomrichting",
+        station: {
+          code: "0120379",
+          label: "Albertdok/Schelde",
+        },
+        speed_mps: 0.24,
+        direction_deg: 250,
+        observed_at: "2026-07-03T10:00:00+02:00",
+      },
+    });
     expect(result.data?.source_freshness).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source_id: "waterinfo-vlaanderen-kiwis",
           subject: "H-waterstandsverwachting Albertdok/Schelde",
+          observed_at: "2026-07-03T10:00:00+02:00",
+        }),
+        expect.objectContaining({
+          source_id: "waterinfo-vlaanderen-kiwis",
+          subject: "Directe stroommeting Albertdok/Schelde",
           observed_at: "2026-07-03T10:00:00+02:00",
         }),
       ]),

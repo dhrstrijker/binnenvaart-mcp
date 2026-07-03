@@ -42,6 +42,7 @@ import {
 import { evaluateDirectCurrent, type DirectCurrentEvaluation } from "./currentAssessment.js";
 import {
   buildKiwisStationCoverage,
+  candidateKiwisCurrentTimeseries,
   candidateKiwisWaterLevelTimeseries,
   getKiwisStations,
   getKiwisTimeseriesForStationPattern,
@@ -69,6 +70,8 @@ const MAX_DIRECT_CURRENT_SECTIONS = 4;
 const MAX_KIWIS_SEARCH_TERMS = 3;
 const KIWIS_WATER_LEVEL_WINDOW_MINUTES = 60;
 const MAX_KIWIS_WATER_LEVEL_SECTIONS = 4;
+const KIWIS_CURRENT_WINDOW_MINUTES = 60;
+const MAX_KIWIS_CURRENT_SECTIONS = 4;
 const MAX_EURIS_DEPTH_SECTIONS = 6;
 const MAX_EURIS_DEPTH_QUERIES_PER_SECTION = 6;
 
@@ -424,6 +427,8 @@ interface OfficialSourceDiscovery {
 
 interface DirectCurrentSectionEvidence {
   sectionKey: string;
+  source_label: string;
+  basis_source: string;
   station: {
     code: string;
     label: string;
@@ -550,6 +555,27 @@ export async function getTideDepartureWindow(
   sourceDiscovery.directCurrentFreshness = directCurrent.directCurrentFreshness;
   bronregels.push(...directCurrent.bronregels);
   datagaten.push(...directCurrent.datagaten);
+
+  const kiwisCurrent = await loadKiwisCurrentObservations(
+    variant,
+    voyage?.vertrek,
+    req,
+    origin.anchor,
+    destination.anchor,
+    tideEstimate,
+    sourceDiscovery,
+  );
+  for (const [key, value] of kiwisCurrent.directCurrentBySectionKey) {
+    if (!sourceDiscovery.directCurrentBySectionKey.has(key)) {
+      sourceDiscovery.directCurrentBySectionKey.set(key, value);
+    }
+  }
+  sourceDiscovery.directCurrentFreshness = [
+    ...sourceDiscovery.directCurrentFreshness,
+    ...kiwisCurrent.directCurrentFreshness,
+  ];
+  bronregels.push(...kiwisCurrent.bronregels);
+  datagaten.push(...kiwisCurrent.datagaten);
 
   const kiwisWaterLevels = await loadKiwisWaterLevelValues(
     variant,
@@ -1029,6 +1055,8 @@ async function loadDirectCurrentObservations(
       directCurrentFreshness.push(freshness);
       directCurrentBySectionKey.set(sectionKey(section), {
         sectionKey: sectionKey(section),
+        source_label: "Rijkswaterstaat DDAPI20 STROOMSHD/STROOMRTG meting",
+        basis_source: "RWS DDAPI20",
         station: {
           code: directMatch.code,
           label: directMatch.label,
@@ -1065,6 +1093,203 @@ function softenObservationDatagaten(gaps: Datagat[]): Datagat[] {
     ...gap,
     severity: "caution",
     message: `Directe RWS-stroomwaarneming niet bruikbaar voor sectieadvies. ${gap.message}`,
+  }));
+}
+
+async function loadKiwisCurrentObservations(
+  variant: RouteVariant | undefined,
+  routeDepartureIso: string | undefined,
+  req: TideDepartureRequest,
+  origin: PlanningAnchor | undefined,
+  destination: PlanningAnchor | undefined,
+  tideEstimate: TideCurrentEstimate | undefined,
+  sourceDiscovery: OfficialSourceDiscovery,
+): Promise<
+  Pick<
+    OfficialSourceDiscovery,
+    "directCurrentBySectionKey" | "directCurrentFreshness" | "bronregels" | "datagaten"
+  >
+> {
+  const directCurrentBySectionKey = new Map<string, DirectCurrentSectionEvidence>();
+  const directCurrentFreshness: SourceFreshnessSummary[] = [];
+  const bronregels: Bronregel[] = [];
+  const datagaten: Datagat[] = [];
+  if (!variant || sourceDiscovery.kiwisStationCoverage.length === 0) {
+    return { directCurrentBySectionKey, directCurrentFreshness, bronregels, datagaten };
+  }
+  if (process.env.WATERINFO_VLAANDEREN_KIWIS_CURRENT_VALUES === "0") {
+    datagaten.push({
+      code: "waterinfo-vlaanderen-kiwis-current-values-skipped",
+      message:
+        "Waterinfo Vlaanderen/KiWIS stroomwaarden zijn uitgeschakeld via WATERINFO_VLAANDEREN_KIWIS_CURRENT_VALUES=0.",
+      severity: "caution",
+    });
+    return { directCurrentBySectionKey, directCurrentFreshness, bronregels, datagaten };
+  }
+
+  const timelineStartIso = firstSectionDeparture(variant) ?? routeDepartureIso;
+  const candidateDepartureIso =
+    req.preferred_departure ??
+    tideEstimate?.windows.find((window) => window.start)?.start ??
+    timelineStartIso;
+  if (!timelineStartIso || !candidateDepartureIso) {
+    return { directCurrentBySectionKey, directCurrentFreshness, bronregels, datagaten };
+  }
+
+  const routeTextValue =
+    origin && destination
+      ? routeText(req, origin, destination)
+      : normalize(
+          [req.origin, req.destination, req.route_hint, req.preference, req.context]
+            .filter(Boolean)
+            .join(" "),
+        );
+
+  let attemptedSections = 0;
+  const attemptedSeries = new Set<string>();
+  for (const section of variant.secties) {
+    if (attemptedSections >= MAX_KIWIS_CURRENT_SECTIONS) break;
+    const key = sectionKey(section);
+    if (sourceDiscovery.directCurrentBySectionKey.has(key)) continue;
+    if (!section.countryCodes.includes("BE")) continue;
+    const passageTime = candidatePassageTime(section, timelineStartIso, candidateDepartureIso);
+    if (!passageTime || section.routeBearingDeg === undefined) continue;
+
+    const stationMatches = matchOfficialStations(
+      section,
+      routeTextValue,
+      sourceDiscovery.rwsCatalogCoverage,
+      sourceDiscovery.kiwisStationCoverage,
+    );
+    const directMatches = stationMatches.filter(
+      (match) =>
+        match.source === "waterinfo-vlaanderen-kiwis" &&
+        match.code !== "vlaanderen.waterinfo.discovery" &&
+        match.capabilities.includes("current_speed") &&
+        match.capabilities.includes("current_direction"),
+    );
+    if (!directMatches.length) continue;
+
+    attemptedSections += 1;
+    const window = observationWindowAround(passageTime, KIWIS_CURRENT_WINDOW_MINUTES);
+    for (const directMatch of directMatches) {
+      const coverage = sourceDiscovery.kiwisStationCoverage.find(
+        (item) => item.station.station_id === directMatch.code,
+      );
+      const speedSeries = coverage
+        ? candidateKiwisCurrentTimeseries(coverage.timeseries, "current_speed").slice(0, 3)
+        : [];
+      const directionSeries = coverage
+        ? candidateKiwisCurrentTimeseries(coverage.timeseries, "current_direction").slice(0, 3)
+        : [];
+      if (!speedSeries.length || !directionSeries.length) {
+        datagaten.push({
+          code: "waterinfo-vlaanderen-kiwis-current-series-missing",
+          message: `Waterinfo Vlaanderen/KiWIS vond station ${directMatch.label}, maar geen bruikbare expliciete stroomsnelheid én stroomrichting voor sectie ${section.waterwayName ?? section.segmentName ?? key}.`,
+          severity: "caution",
+        });
+        continue;
+      }
+
+      for (const speed of speedSeries) {
+        const speedFactor = kiwisCurrentSpeedUnitFactor(speed.unit);
+        if (speedFactor === undefined) {
+          datagaten.push({
+            code: "waterinfo-vlaanderen-kiwis-current-speed-unit-unknown",
+            message: `Waterinfo Vlaanderen/KiWIS stroomsnelheidsreeks ${speed.ts_id} (${speed.ts_name ?? "zonder naam"}) voor ${directMatch.label} heeft geen herkende snelheidseenheid; waarde wordt niet als m/s gebruikt.`,
+            severity: "caution",
+          });
+          continue;
+        }
+        for (const direction of directionSeries) {
+          const attemptKey = `${speed.ts_id}:${direction.ts_id}:${window.startIso}:${window.endIso}`;
+          if (attemptedSeries.has(attemptKey)) continue;
+          attemptedSeries.add(attemptKey);
+
+          const [speedValues, directionValues] = await Promise.all([
+            getKiwisTimeseriesValues(speed.ts_id, window.startIso, window.endIso),
+            getKiwisTimeseriesValues(direction.ts_id, window.startIso, window.endIso),
+          ]);
+          bronregels.push(...speedValues.bronregels, ...directionValues.bronregels);
+          datagaten.push(
+            ...softenKiwisCurrentValueDatagaten(speedValues.datagaten),
+            ...softenKiwisCurrentValueDatagaten(directionValues.datagaten),
+          );
+
+          const evaluation = evaluateDirectCurrent({
+            routeBearingDeg: section.routeBearingDeg,
+            passageIso: passageTime,
+            speedPoints: kiwisCurrentSpeedPoints(speedValues.data ?? [], speedFactor),
+            directionPoints: kiwisCurrentDirectionPoints(directionValues.data ?? []),
+            maxPointDeltaMinutes: KIWIS_CURRENT_WINDOW_MINUTES,
+            sourceLabel: "Waterinfo Vlaanderen/KiWIS",
+          });
+          if (!evaluation.observed_at) continue;
+
+          const freshness = sourceFreshnessSummary(
+            "waterinfo-vlaanderen-kiwis",
+            `Directe stroommeting ${directMatch.label}`,
+            evaluation.observed_at,
+          );
+          if (freshness.status !== "fresh") datagaten.push(sourceFreshnessDatagat(freshness));
+          directCurrentFreshness.push(freshness);
+          directCurrentBySectionKey.set(key, {
+            sectionKey: key,
+            source_label: "Waterinfo Vlaanderen KiWIS stroomsnelheid/stroomrichting",
+            basis_source: `Waterinfo Vlaanderen/KiWIS ts_id ${speed.ts_id}/${direction.ts_id}`,
+            station: {
+              code: directMatch.code,
+              label: directMatch.label,
+            },
+            evaluation,
+          });
+          break;
+        }
+        if (directCurrentBySectionKey.has(key)) break;
+      }
+      if (directCurrentBySectionKey.has(key)) break;
+    }
+  }
+
+  return { directCurrentBySectionKey, directCurrentFreshness, bronregels, datagaten };
+}
+
+function kiwisCurrentSpeedPoints(
+  values: KiwisTimeseriesValue[],
+  factorToMps: number,
+): Array<{ dateTime: string; value: number }> {
+  return values.map((value) => ({
+    dateTime: value.dateTime,
+    value: round3(value.value * factorToMps),
+  }));
+}
+
+function kiwisCurrentDirectionPoints(
+  values: KiwisTimeseriesValue[],
+): Array<{ dateTime: string; value: number }> {
+  return values.map((value) => ({
+    dateTime: value.dateTime,
+    value: value.value,
+  }));
+}
+
+function kiwisCurrentSpeedUnitFactor(unit: string | undefined): number | undefined {
+  const normalized = normalize(unit ?? "")
+    .replace(/\s+/g, "")
+    .replace("·", "")
+    .replace("per", "/");
+  if (!normalized) return undefined;
+  if (["m/s", "ms-1", "meter/seconde", "meters/seconde"].includes(normalized)) return 1;
+  if (["cm/s", "cms-1", "centimeter/seconde", "centimeters/seconde"].includes(normalized)) return 0.01;
+  if (["mm/s", "mms-1", "millimeter/seconde", "millimeters/seconde"].includes(normalized)) return 0.001;
+  return undefined;
+}
+
+function softenKiwisCurrentValueDatagaten(gaps: Datagat[]): Datagat[] {
+  return gaps.map((gap) => ({
+    ...gap,
+    severity: "caution",
+    message: `Waterinfo Vlaanderen/KiWIS stroomwaarde niet bruikbaar voor sectieadvies. ${gap.message}`,
   }));
 }
 
@@ -2257,9 +2482,9 @@ function sectionCurrentEvidence(
       status: directCurrent.evaluation.status,
       phase: "unknown",
       confidence: directCurrent.evaluation.confidence,
-      source: "Rijkswaterstaat DDAPI20 STROOMSHD/STROOMRTG meting",
+      source: directCurrent.source_label,
       station: directCurrent.station,
-      basis: `${directCurrent.evaluation.basis} Sectie: ${section.waterwayName ?? section.segmentName ?? "onbekend"}.`,
+      basis: `${directCurrent.evaluation.basis} Bronpad: ${directCurrent.basis_source}. Sectie: ${section.waterwayName ?? section.segmentName ?? "onbekend"}.`,
       ...(directCurrent.evaluation.speed_mps !== undefined
         ? { speed_mps: directCurrent.evaluation.speed_mps }
         : {}),
@@ -3029,6 +3254,10 @@ function plausibleDraft(value: number | undefined): number | undefined {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
 }
 
 function normalize(value: string): string {

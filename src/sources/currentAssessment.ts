@@ -1,12 +1,18 @@
-import type { RwsObservationPoint } from "./rwsDdapi20.js";
+export interface CurrentObservationPoint {
+  dateTime: string;
+  value: number;
+  unit?: string;
+  qualityCode?: string;
+}
 
 export interface DirectCurrentInput {
   routeBearingDeg?: number;
   passageIso?: string;
-  speedPoints: RwsObservationPoint[];
-  directionPoints: RwsObservationPoint[];
+  speedPoints: CurrentObservationPoint[];
+  directionPoints: CurrentObservationPoint[];
   maxPointDeltaMinutes?: number;
   slackSpeedMps?: number;
+  sourceLabel?: string;
 }
 
 export interface DirectCurrentEvaluation {
@@ -24,6 +30,7 @@ const DEFAULT_MAX_POINT_DELTA_MINUTES = 45;
 const DEFAULT_SLACK_SPEED_MPS = 0.05;
 
 export function evaluateDirectCurrent(input: DirectCurrentInput): DirectCurrentEvaluation {
+  const sourceLabel = input.sourceLabel ?? "RWS DDAPI20";
   if (input.routeBearingDeg === undefined) {
     return missing(
       "Geen routebearing beschikbaar; directe stroomrichting kan niet met de vaarroute worden vergeleken.",
@@ -44,7 +51,7 @@ export function evaluateDirectCurrent(input: DirectCurrentInput): DirectCurrentE
   const direction = nearestPoint(input.directionPoints, passageMs);
   if (!speed || !direction) {
     return missing(
-      "RWS DDAPI20 leverde geen gekoppelde stroomsnelheid en stroomrichting rond de passagetijd.",
+      `${sourceLabel} leverde geen gekoppelde stroomsnelheid en stroomrichting rond de passagetijd.`,
     );
   }
 
@@ -70,7 +77,7 @@ export function evaluateDirectCurrent(input: DirectCurrentInput): DirectCurrentE
     return {
       status: "slack",
       confidence: "medium",
-      basis: `Officiële RWS DDAPI20 stroomsnelheid is ${speedMps} m/s, lager dan de slack-drempel ${slackSpeed} m/s.`,
+      basis: `Officiële ${sourceLabel} stroomsnelheid is ${speedMps} m/s, lager dan de slack-drempel ${slackSpeed} m/s.`,
       speed_mps: speedMps,
       direction_deg: directionDeg,
       observed_at: observedAt,
@@ -83,7 +90,7 @@ export function evaluateDirectCurrent(input: DirectCurrentInput): DirectCurrentE
     return {
       status: "with",
       confidence: "high",
-      basis: `Officiële RWS DDAPI20 stroomrichting ${directionDeg} graden ligt ${angle} graden van routebearing ${round1(input.routeBearingDeg)} graden; stroom staat mee.`,
+      basis: `Officiële ${sourceLabel} stroomrichting ${directionDeg} graden ligt ${angle} graden van routebearing ${round1(input.routeBearingDeg)} graden; stroom staat mee.`,
       speed_mps: speedMps,
       direction_deg: directionDeg,
       observed_at: observedAt,
@@ -95,7 +102,7 @@ export function evaluateDirectCurrent(input: DirectCurrentInput): DirectCurrentE
     return {
       status: "against",
       confidence: "high",
-      basis: `Officiële RWS DDAPI20 stroomrichting ${directionDeg} graden ligt ${angle} graden van routebearing ${round1(input.routeBearingDeg)} graden; stroom staat tegen.`,
+      basis: `Officiële ${sourceLabel} stroomrichting ${directionDeg} graden ligt ${angle} graden van routebearing ${round1(input.routeBearingDeg)} graden; stroom staat tegen.`,
       speed_mps: speedMps,
       direction_deg: directionDeg,
       observed_at: observedAt,
@@ -107,7 +114,7 @@ export function evaluateDirectCurrent(input: DirectCurrentInput): DirectCurrentE
   return {
     status: "unknown",
     confidence: "low",
-    basis: `Officiële RWS DDAPI20 stroomrichting ${directionDeg} graden ligt ${angle} graden van routebearing ${round1(input.routeBearingDeg)} graden; dat is dwars/onzeker, niet duidelijk mee of tegen.`,
+    basis: `Officiële ${sourceLabel} stroomrichting ${directionDeg} graden ligt ${angle} graden van routebearing ${round1(input.routeBearingDeg)} graden; dat is dwars/onzeker, niet duidelijk mee of tegen.`,
     speed_mps: speedMps,
     direction_deg: directionDeg,
     observed_at: observedAt,
@@ -125,11 +132,11 @@ function missing(basis: string): DirectCurrentEvaluation {
 }
 
 function nearestPoint(
-  points: RwsObservationPoint[],
+  points: CurrentObservationPoint[],
   passageMs: number,
 ):
   | {
-      point: RwsObservationPoint;
+      point: CurrentObservationPoint;
       atMs: number;
     }
   | undefined {

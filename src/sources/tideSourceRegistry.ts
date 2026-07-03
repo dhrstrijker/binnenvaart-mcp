@@ -297,10 +297,10 @@ export const PARAMETER_CONTRACTS: ParameterContract[] = [
     label: "Vlaamse stroomsnelheid",
     kiwis: {
       parameter_code: "V",
-      status: "planned",
+      status: "discovered",
     },
     interpretation_note:
-      "Only explicit current-speed parameter families may support current evidence; Vdc or water-quality/telemetry series are not current.",
+      "Only explicit current-speed parameter families may support current evidence; values must carry a recognized speed unit before conversion to m/s. Vdc or water-quality/telemetry series are not current.",
   },
   {
     id: "waterinfo-vlaanderen-current-direction",
@@ -309,10 +309,10 @@ export const PARAMETER_CONTRACTS: ParameterContract[] = [
     label: "Vlaamse stroomrichting",
     kiwis: {
       parameter_code: "direction",
-      status: "planned",
+      status: "discovered",
     },
     interpretation_note:
-      "Current direction must be explicit before Belgian sections can be classified as stroom mee/tegen.",
+      "Current direction must be explicit and paired with current speed near the section passagetime before Belgian sections can be classified as stroom mee/tegen.",
   },
   {
     id: "euris-route-depth-basis",
