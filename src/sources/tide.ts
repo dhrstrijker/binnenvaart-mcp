@@ -977,60 +977,66 @@ async function loadDirectCurrentObservations(
       sourceDiscovery.rwsCatalogCoverage,
       sourceDiscovery.kiwisStationCoverage,
     );
-    const directMatch = stationMatches.find(
+    const directMatches = stationMatches.filter(
       (match) =>
         match.source === "rws-ddapi20" &&
         match.capabilities.includes("current_speed") &&
         match.capabilities.includes("current_direction"),
     );
-    if (!directMatch || attemptedLocations.has(`${directMatch.code}:${passageTime}`)) continue;
-    const speedCoverage = rwsCoverageFor(
-      sourceDiscovery.rwsCatalogCoverage,
-      directMatch.code,
-      "current_speed",
-    );
-    const directionCoverage = rwsCoverageFor(
-      sourceDiscovery.rwsCatalogCoverage,
-      directMatch.code,
-      "current_direction",
-    );
-    if (!speedCoverage || !directionCoverage) continue;
+    if (!directMatches.length) continue;
 
     attemptedSections += 1;
-    attemptedLocations.add(`${directMatch.code}:${passageTime}`);
     const window = observationWindowAround(passageTime, DIRECT_CURRENT_WINDOW_MINUTES);
-    const [speed, direction] = await Promise.all([
-      getRwsObservationsForCoverage(speedCoverage, window.startIso, window.endIso),
-      getRwsObservationsForCoverage(directionCoverage, window.startIso, window.endIso),
-    ]);
-    bronregels.push(...speed.bronregels, ...direction.bronregels);
-    datagaten.push(
-      ...softenObservationDatagaten(speed.datagaten),
-      ...softenObservationDatagaten(direction.datagaten),
-    );
+    for (const directMatch of directMatches) {
+      const attemptKey = `${directMatch.code}:${passageTime}`;
+      if (attemptedLocations.has(attemptKey)) continue;
+      const speedCoverage = rwsCoverageFor(
+        sourceDiscovery.rwsCatalogCoverage,
+        directMatch.code,
+        "current_speed",
+      );
+      const directionCoverage = rwsCoverageFor(
+        sourceDiscovery.rwsCatalogCoverage,
+        directMatch.code,
+        "current_direction",
+      );
+      if (!speedCoverage || !directionCoverage) continue;
 
-    const evaluation = evaluateDirectCurrent({
-      routeBearingDeg: section.routeBearingDeg,
-      passageIso: passageTime,
-      speedPoints: speed.data ?? [],
-      directionPoints: direction.data ?? [],
-      maxPointDeltaMinutes: DIRECT_CURRENT_WINDOW_MINUTES,
-    });
-    if (!evaluation.observed_at) continue;
-    const freshness = sourceFreshnessSummary(
-      "rws-ddapi20",
-      `Directe stroommeting ${directMatch.label}`,
-      evaluation.observed_at,
-    );
-    directCurrentFreshness.push(freshness);
-    directCurrentBySectionKey.set(sectionKey(section), {
-      sectionKey: sectionKey(section),
-      station: {
-        code: directMatch.code,
-        label: directMatch.label,
-      },
-      evaluation,
-    });
+      attemptedLocations.add(attemptKey);
+      const [speed, direction] = await Promise.all([
+        getRwsObservationsForCoverage(speedCoverage, window.startIso, window.endIso),
+        getRwsObservationsForCoverage(directionCoverage, window.startIso, window.endIso),
+      ]);
+      bronregels.push(...speed.bronregels, ...direction.bronregels);
+      datagaten.push(
+        ...softenObservationDatagaten(speed.datagaten),
+        ...softenObservationDatagaten(direction.datagaten),
+      );
+
+      const evaluation = evaluateDirectCurrent({
+        routeBearingDeg: section.routeBearingDeg,
+        passageIso: passageTime,
+        speedPoints: speed.data ?? [],
+        directionPoints: direction.data ?? [],
+        maxPointDeltaMinutes: DIRECT_CURRENT_WINDOW_MINUTES,
+      });
+      if (!evaluation.observed_at) continue;
+      const freshness = sourceFreshnessSummary(
+        "rws-ddapi20",
+        `Directe stroommeting ${directMatch.label}`,
+        evaluation.observed_at,
+      );
+      directCurrentFreshness.push(freshness);
+      directCurrentBySectionKey.set(sectionKey(section), {
+        sectionKey: sectionKey(section),
+        station: {
+          code: directMatch.code,
+          label: directMatch.label,
+        },
+        evaluation,
+      });
+      break;
+    }
   }
 
   return { directCurrentBySectionKey, directCurrentFreshness, bronregels, datagaten };

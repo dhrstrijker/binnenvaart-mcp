@@ -808,6 +808,192 @@ describe("getTideDepartureWindow", () => {
     );
   });
 
+  it("tries another DDAPI20 current station when the first catalog match has no coupled observations", async () => {
+    const observedLocationCodes: string[] = [];
+    mockFetch((url, init) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Rotterdam")) {
+        return {
+          items: [
+            {
+              isrs: "NL666666666666666666",
+              nationalObjectName: "Rotterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Nieuwe Maas",
+              locationName: "Rotterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Amsterdam")) {
+        return {
+          items: [
+            {
+              isrs: AMSTERDAM_AREA,
+              nationalObjectName: "Amsterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Noordzeekanaal",
+              locationName: "Amsterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        return voyageOk({
+          AllowedDimensions: { Draught: 520 },
+          Legs: [
+            {
+              FromObjectName: "Rotterdam",
+              ToObjectName: "Amsterdam",
+              Segments: [
+                {
+                  SegmentName: "Nieuwe Maas - Lek",
+                  WaterwayName: "Nieuwe Maas",
+                  FairwaySectionId: "FS-ROT-LEK",
+                  Authority: "Rijkswaterstaat",
+                  Direction: "UPSTREAM",
+                  ETA: "2026-07-03T08:30:00Z",
+                  ETD: "2026-07-03T08:00:00Z",
+                  Length: 12500,
+                  Dimensions: { Draught: 510 },
+                  CountryCodes: ["NL"],
+                  Events: [
+                    { EventType: "Point", ObjectName: "Start", Latitude: 51.91, Longitude: 4.48 },
+                    { EventType: "Point", ObjectName: "End", Latitude: 51.91, Longitude: 4.56 },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (url.includes("OphalenCatalogus")) {
+        return {
+          LocatieLijst: [
+            {
+              Locatie_MessageID: 20,
+              Code: "a.rotterdam.current.empty",
+              Naam: "A Rotterdam stroommeetpunt zonder waarden",
+              Omschrijving: "Nieuwe Maas bij Rotterdam",
+              Lat: 51.91,
+              Lon: 4.49,
+            },
+            {
+              Locatie_MessageID: 21,
+              Code: "z.rotterdam.current.good",
+              Naam: "Z Rotterdam stroommeetpunt met waarden",
+              Omschrijving: "Nieuwe Maas bij Rotterdam",
+              Lat: 51.91,
+              Lon: 4.5,
+            },
+          ],
+          AquoMetadataLijst: [
+            {
+              AquoMetadata_MessageID: 30,
+              Compartiment: { Code: "OW" },
+              Grootheid: { Code: "STROOMSHD" },
+              ProcesType: "meting",
+              Eenheid: { Code: "m/s" },
+            },
+            {
+              AquoMetadata_MessageID: 31,
+              Compartiment: { Code: "OW" },
+              Grootheid: { Code: "STROOMRTG" },
+              ProcesType: "meting",
+              Eenheid: { Code: "graad" },
+            },
+            {
+              AquoMetadata_MessageID: 40,
+              Compartiment: { Code: "OW" },
+              Grootheid: { Code: "STROOMSHD" },
+              ProcesType: "meting",
+              Eenheid: { Code: "m/s" },
+            },
+            {
+              AquoMetadata_MessageID: 41,
+              Compartiment: { Code: "OW" },
+              Grootheid: { Code: "STROOMRTG" },
+              ProcesType: "meting",
+              Eenheid: { Code: "graad" },
+            },
+          ],
+          AquoMetadataLocatieLijst: [
+            { AquoMetaData_MessageID: 30, Locatie_MessageID: 20 },
+            { AquoMetaData_MessageID: 31, Locatie_MessageID: 20 },
+            { AquoMetaData_MessageID: 40, Locatie_MessageID: 21 },
+            { AquoMetaData_MessageID: 41, Locatie_MessageID: 21 },
+          ],
+        };
+      }
+      if (url.includes("OphalenWaarnemingen")) {
+        const body = JSON.parse(String(init?.body)) as {
+          Locatie?: { Code?: string };
+          AquoPlusWaarnemingMetadata?: { AquoMetadata?: { Grootheid?: { Code?: string } } };
+        };
+        const locationCode = body.Locatie?.Code ?? "";
+        const quantity = body.AquoPlusWaarnemingMetadata?.AquoMetadata?.Grootheid?.Code;
+        observedLocationCodes.push(locationCode);
+        if (locationCode === "a.rotterdam.current.empty") {
+          return { Succesvol: true, WaarnemingenLijst: [] };
+        }
+        return {
+          Succesvol: true,
+          WaarnemingenLijst: [
+            {
+              MetingenLijst: [
+                {
+                  Tijdstip: "2026-07-03T03:15:00.000Z",
+                  Meetwaarde: { Waarde_Numeriek: quantity === "STROOMSHD" ? 0.18 : 88 },
+                  WaarnemingMetadata: { Kwaliteitswaardecode: "00" },
+                },
+              ],
+            },
+          ],
+        };
+      }
+      if (url.includes("/api/chart/get")) {
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T10:00:00Z", -70],
+          ["2026-07-03T14:00:00Z", 100],
+          ["2026-07-03T18:00:00Z", -60],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Rotterdam",
+      destination: "Amsterdam",
+      preferred_departure: "2026-07-03T05:00:00+02:00",
+      draft_m: 4.5,
+      preference: "stroom mee",
+    });
+
+    expect(observedLocationCodes).toEqual([
+      "a.rotterdam.current.empty",
+      "a.rotterdam.current.empty",
+      "z.rotterdam.current.good",
+      "z.rotterdam.current.good",
+    ]);
+    expect(result.data?.route_sections[0]).toMatchObject({
+      current_status: "with",
+      current_evidence: {
+        tier: "official_current",
+        station: { code: "z.rotterdam.current.good" },
+        speed_mps: 0.18,
+        direction_deg: 88,
+      },
+    });
+    expect(result.data?.route_sections[0]?.missing_data_codes).not.toContain(
+      "tide-departure-section-current-direct-data-missing",
+    );
+  });
+
   it("uses fresh EuRIS Hydrometeo LSD as section-level depth evidence when route draught is missing", async () => {
     mockFetch((url) => {
       const decoded = decodeURIComponent(url);
