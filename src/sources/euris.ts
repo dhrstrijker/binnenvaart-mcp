@@ -721,7 +721,7 @@ function routeError(r: RouteResponse): Datagat {
       return {
         code: "euris-route-ship-dimensions",
         message: `De route is te krap voor dit schip: ${tag("DimensionMessages") ?? r.ErrorMessage ?? "een afmeting wordt overschreden"}.`,
-        severity: "caution",
+        severity: "blocking",
       };
     case "StartNotFound":
       return {

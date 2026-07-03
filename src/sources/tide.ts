@@ -194,7 +194,23 @@ export interface DepartureWindow {
     depth_ok_sections: number;
     depth_warning_sections: number;
     depth_blocking_sections: number;
+    numeric_score: number;
+    route_duration_minutes?: number;
+    estimated_arrival_at?: string;
+    arrival_by?: string;
+    arrival_constraint?: "meets" | "misses" | "unknown" | "not_requested";
+    arrival_margin_minutes?: number;
+    latest_departure_to_meet_arrival?: string;
     confidence: "medium" | "low" | "missing";
+    controlling_sections: Array<{
+      leg_index: number;
+      segment_index: number;
+      name?: string;
+      waterway?: string;
+      severity: "blocking" | "caution" | "info";
+      reason: string;
+    }>;
+    decision_basis: string[];
   };
   section_timeline?: WindowSectionAssessment[];
 }
@@ -554,7 +570,7 @@ export async function getTideDepartureWindow(
       message: "Geen diepgang opgegeven; zonder diepgang kan de onder-kielmarge niet worden beoordeeld.",
       severity: "blocking",
     });
-  } else if (!hasDepthBasis(variant, sourceDiscovery)) {
+  } else if (!hasDepthBasis(variant, sourceDiscovery, datagaten)) {
     datagaten.push({
       code: "tide-departure-depth-basis-missing",
       message:
@@ -1366,7 +1382,7 @@ function basePlan(
   sourceDiscovery: OfficialSourceDiscovery = emptySourceDiscovery(),
 ): TideDeparturePlan {
   const variant = voyage?.varianten[0];
-  const depth = depthAssessment(variant, requiredDepthM, safetyMarginM, sourceDiscovery);
+  const depth = depthAssessment(variant, requiredDepthM, safetyMarginM, sourceDiscovery, datagaten);
   const routeTextValue =
     origin && destination
       ? routeText(req, origin, destination)
@@ -1522,12 +1538,14 @@ function buildCandidateDepartureWindows(
 ): DepartureWindow[] {
   if (tideEstimate && status !== "stop") {
     const timelineStartIso = variant ? firstSectionDeparture(variant) : undefined;
+    const arrivalByIso = resolveArrivalBy(req.arrival_by, tideEstimate.windows[0]?.start);
     return rankCandidateWindows(
       tideEstimate.windows.map((window) =>
         enrichCandidateWindow(
           window,
           variant,
           timelineStartIso,
+          arrivalByIso,
           requiredDepthM,
           safetyMarginM,
           tideEstimate,
@@ -1557,6 +1575,7 @@ function enrichCandidateWindow(
   window: DepartureWindow,
   variant: RouteVariant | undefined,
   timelineStartIso: string | undefined,
+  arrivalByIso: string | undefined,
   requiredDepthM: number | undefined,
   safetyMarginM: number,
   tideEstimate: TideCurrentEstimate,
@@ -1580,7 +1599,7 @@ function enrichCandidateWindow(
   );
   return {
     ...window,
-    score: scoreWindowSections(sectionTimeline),
+    score: scoreWindowSections(sectionTimeline, variant, window.start, window.end, arrivalByIso),
     section_timeline: sectionTimeline,
   };
 }
@@ -1644,7 +1663,13 @@ function windowSectionAssessment(
   };
 }
 
-function scoreWindowSections(sections: WindowSectionAssessment[]): NonNullable<DepartureWindow["score"]> {
+function scoreWindowSections(
+  sections: WindowSectionAssessment[],
+  variant: RouteVariant | undefined,
+  departureStartIso: string | undefined,
+  departureEndIso: string | undefined,
+  arrivalByIso: string | undefined,
+): NonNullable<DepartureWindow["score"]> {
   const withCurrent = sections.filter((section) => section.current_status === "with").length;
   const againstCurrent = sections.filter((section) => section.current_status === "against").length;
   const slack = sections.filter((section) => section.current_status === "slack").length;
@@ -1654,6 +1679,26 @@ function scoreWindowSections(sections: WindowSectionAssessment[]): NonNullable<D
   const depthBlocking = sections.filter(
     (section) => section.depth_status === "insufficient" || section.depth_status === "missing",
   ).length;
+  const arrival = arrivalScore(variant, departureStartIso, departureEndIso, arrivalByIso);
+  const controllingSections = controllingWindowSections(sections);
+  const confidence =
+    unknownCurrent === sections.length ? "missing" : againstCurrent > 0 || slack > 0 ? "low" : "medium";
+  const numericScore =
+    withCurrent * 20 -
+    againstCurrent * 35 -
+    slack * 8 -
+    unknownCurrent * 12 +
+    depthOk * 12 -
+    depthWarning * 18 -
+    depthBlocking * 80 +
+    (arrival.arrival_constraint === "meets"
+      ? 18
+      : arrival.arrival_constraint === "misses"
+        ? -120
+        : arrival.arrival_constraint === "unknown"
+          ? -10
+          : 0);
+
   return {
     sections_total: sections.length,
     with_current_sections: withCurrent,
@@ -1663,8 +1708,20 @@ function scoreWindowSections(sections: WindowSectionAssessment[]): NonNullable<D
     depth_ok_sections: depthOk,
     depth_warning_sections: depthWarning,
     depth_blocking_sections: depthBlocking,
-    confidence:
-      unknownCurrent === sections.length ? "missing" : againstCurrent > 0 || slack > 0 ? "low" : "medium",
+    numeric_score: numericScore,
+    ...arrival,
+    confidence,
+    controlling_sections: controllingSections,
+    decision_basis: windowDecisionBasis({
+      withCurrent,
+      againstCurrent,
+      slack,
+      unknownCurrent,
+      depthWarning,
+      depthBlocking,
+      arrivalConstraint: arrival.arrival_constraint ?? "not_requested",
+      controllingSections,
+    }),
   };
 }
 
@@ -1674,13 +1731,222 @@ function rankCandidateWindows(windows: DepartureWindow[]): DepartureWindow[] {
     const bScore = b.score;
     if (!aScore || !bScore) return a.start?.localeCompare(b.start ?? "") ?? 0;
     return (
+      arrivalRank(aScore.arrival_constraint) - arrivalRank(bScore.arrival_constraint) ||
       aScore.depth_blocking_sections - bScore.depth_blocking_sections ||
       aScore.against_current_sections - bScore.against_current_sections ||
       aScore.unknown_current_sections - bScore.unknown_current_sections ||
       bScore.with_current_sections - aScore.with_current_sections ||
+      bScore.numeric_score - aScore.numeric_score ||
       (a.start ?? "").localeCompare(b.start ?? "")
     );
   });
+}
+
+function arrivalScore(
+  variant: RouteVariant | undefined,
+  departureStartIso: string | undefined,
+  departureEndIso: string | undefined,
+  arrivalByIso: string | undefined,
+): Pick<
+  NonNullable<DepartureWindow["score"]>,
+  | "route_duration_minutes"
+  | "estimated_arrival_at"
+  | "arrival_by"
+  | "arrival_constraint"
+  | "arrival_margin_minutes"
+  | "latest_departure_to_meet_arrival"
+> {
+  if (!arrivalByIso) {
+    return { arrival_constraint: "not_requested" };
+  }
+  const routeDurationMinutes = variant?.vaartijdMinuten;
+  const departureStartMs = departureStartIso ? Date.parse(departureStartIso) : NaN;
+  const departureEndMs = departureEndIso ? Date.parse(departureEndIso) : NaN;
+  const arrivalByMs = Date.parse(arrivalByIso);
+  if (
+    routeDurationMinutes === undefined ||
+    !Number.isFinite(departureStartMs) ||
+    !Number.isFinite(arrivalByMs)
+  ) {
+    return {
+      arrival_by: arrivalByIso,
+      arrival_constraint: "unknown",
+    };
+  }
+
+  const routeDurationMs = routeDurationMinutes * 60_000;
+  const estimatedArrivalMs = departureStartMs + routeDurationMs;
+  const latestDepartureMs = arrivalByMs - routeDurationMs;
+  const comparisonDepartureMs = Number.isFinite(departureEndMs)
+    ? Math.min(departureEndMs, latestDepartureMs)
+    : latestDepartureMs;
+  const meets = comparisonDepartureMs >= departureStartMs;
+  const arrivalMarginMinutes = Math.round((arrivalByMs - estimatedArrivalMs) / 60_000);
+  return {
+    route_duration_minutes: routeDurationMinutes,
+    estimated_arrival_at: new Date(estimatedArrivalMs).toISOString(),
+    arrival_by: arrivalByIso,
+    arrival_constraint: meets ? "meets" : "misses",
+    arrival_margin_minutes: arrivalMarginMinutes,
+    latest_departure_to_meet_arrival: new Date(latestDepartureMs).toISOString(),
+  };
+}
+
+function resolveArrivalBy(value: string | undefined, referenceIso: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const directMs = Date.parse(trimmed);
+  if (Number.isFinite(directMs)) return new Date(directMs).toISOString();
+
+  const timeMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  const reference = referenceIso ? new Date(referenceIso) : undefined;
+  if (!timeMatch || !reference || Number.isNaN(reference.getTime())) return undefined;
+
+  const [, hour, minute, second = "00"] = timeMatch;
+  const date = amsterdamDateParts(reference);
+  return toUtcIsoFromAmsterdamLocal(date.year, date.month, date.day, Number(hour), Number(minute), Number(second));
+}
+
+function amsterdamDateParts(date: Date): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Amsterdam",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((item) => item.type === type)?.value);
+  return { year: part("year"), month: part("month"), day: part("day") };
+}
+
+function toUtcIsoFromAmsterdamLocal(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+): string | undefined {
+  if (![year, month, day, hour, minute, second].every(Number.isFinite)) return undefined;
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const local = amsterdamDateTimeParts(utcGuess);
+  const localAsUtcMs = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second);
+  const offsetMs = localAsUtcMs - utcGuess.getTime();
+  return new Date(Date.UTC(year, month - 1, day, hour, minute, second) - offsetMs).toISOString();
+}
+
+function amsterdamDateTimeParts(date: Date): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+} {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Amsterdam",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((item) => item.type === type)?.value);
+  return {
+    year: part("year"),
+    month: part("month"),
+    day: part("day"),
+    hour: part("hour"),
+    minute: part("minute"),
+    second: part("second"),
+  };
+}
+
+function arrivalRank(value: NonNullable<DepartureWindow["score"]>["arrival_constraint"]): number {
+  if (value === "meets" || value === "not_requested" || value === undefined) return 0;
+  if (value === "unknown") return 1;
+  return 2;
+}
+
+function controllingWindowSections(
+  sections: WindowSectionAssessment[],
+): NonNullable<DepartureWindow["score"]>["controlling_sections"] {
+  return sections
+    .flatMap((section) => {
+      const base = {
+        leg_index: section.leg_index,
+        segment_index: section.segment_index,
+        ...(section.name ? { name: section.name } : {}),
+        ...(section.waterway ? { waterway: section.waterway } : {}),
+      };
+      const findings: NonNullable<DepartureWindow["score"]>["controlling_sections"] = [];
+      if (section.depth_status === "insufficient" || section.depth_status === "missing") {
+        findings.push({
+          ...base,
+          severity: "blocking",
+          reason:
+            section.depth_status === "insufficient"
+              ? "Dieptebasis geeft onvoldoende marge voor deze sectie."
+              : "Dieptebasis ontbreekt voor deze sectie.",
+        });
+      } else if (section.depth_status === "warn") {
+        findings.push({
+          ...base,
+          severity: "caution",
+          reason: "Dieptebasis is krap voor deze sectie.",
+        });
+      }
+      if (section.current_status === "against") {
+        findings.push({
+          ...base,
+          severity: "caution",
+          reason: "Passagetijd valt in tegenstroom voor deze sectie.",
+        });
+      } else if (section.current_status === "unknown") {
+        findings.push({
+          ...base,
+          severity: "caution",
+          reason: "Stroomstatus ontbreekt voor deze sectie.",
+        });
+      } else if (section.current_status === "slack") {
+        findings.push({
+          ...base,
+          severity: "info",
+          reason: "Passagetijd ligt rond kentering/slap water.",
+        });
+      }
+      return findings;
+    })
+    .slice(0, 6);
+}
+
+function windowDecisionBasis(input: {
+  withCurrent: number;
+  againstCurrent: number;
+  slack: number;
+  unknownCurrent: number;
+  depthWarning: number;
+  depthBlocking: number;
+  arrivalConstraint: NonNullable<DepartureWindow["score"]>["arrival_constraint"];
+  controllingSections: NonNullable<DepartureWindow["score"]>["controlling_sections"];
+}): string[] {
+  const basis: string[] = [];
+  if (input.arrivalConstraint === "meets") basis.push("Voldoet aan de aankomstconstraint.");
+  if (input.arrivalConstraint === "misses") basis.push("Mist de aankomstconstraint bij vertrek in dit venster.");
+  if (input.arrivalConstraint === "unknown") basis.push("Aankomstconstraint kon niet worden beoordeeld.");
+  if (input.depthBlocking > 0) basis.push(`${input.depthBlocking} sectie(s) blokkeren op diepte.`);
+  if (input.depthWarning > 0) basis.push(`${input.depthWarning} sectie(s) hebben krappe dieptemarge.`);
+  if (input.againstCurrent > 0) basis.push(`${input.againstCurrent} sectie(s) vallen in tegenstroom.`);
+  if (input.unknownCurrent > 0) basis.push(`${input.unknownCurrent} sectie(s) hebben onbekende stroomstatus.`);
+  if (input.slack > 0) basis.push(`${input.slack} sectie(s) liggen rond kentering/slap water.`);
+  if (input.withCurrent > 0) basis.push(`${input.withCurrent} sectie(s) vallen in mee-stroomfase.`);
+  if (!basis.length && input.controllingSections.length === 0) {
+    basis.push("Geen controlerende stroom- of dieptebeperking gevonden in de sectiescore.");
+  }
+  return basis;
 }
 
 function buildSectionAssessments(
@@ -1793,7 +2059,9 @@ function sectionAssessment(
     ...(depth.evidence_kind ? { depth_evidence_kind: depth.evidence_kind } : {}),
     ...(depth.confidence ? { depth_confidence: depth.confidence } : {}),
     ...(depth.rejected_reason ? { depth_rejected_reason: depth.rejected_reason } : {}),
-    ...(depth.available_depth_m !== undefined ? { available_depth_m: depth.available_depth_m } : {}),
+    ...(depth.available_depth_m !== undefined && !isAllowedDraughtEvidence(depth.evidence_kind)
+      ? { available_depth_m: depth.available_depth_m }
+      : {}),
     ...(depth.available_draught_m !== undefined ? { available_draught_m: depth.available_draught_m } : {}),
     ...(requiredDepthM !== undefined ? { required_depth_m: requiredDepthM } : {}),
     ...(waterLevelEvidence
@@ -1960,11 +2228,16 @@ function depthEvidenceForSection(
   return undefined;
 }
 
-function hasDepthBasis(variant: RouteVariant | undefined, sourceDiscovery: OfficialSourceDiscovery): boolean {
+function hasDepthBasis(
+  variant: RouteVariant | undefined,
+  sourceDiscovery: OfficialSourceDiscovery,
+  datagaten: Datagat[] = [],
+): boolean {
   return Boolean(
     variant?.maxAfmetingen?.diepgangCm !== undefined ||
     variant?.secties.some((section) => section.dimensions?.diepgangCm !== undefined) ||
-    sourceDiscovery.eurisDepthBySectionKey.size > 0,
+    sourceDiscovery.eurisDepthBySectionKey.size > 0 ||
+    routeDimensionLimitFromDatagaten(datagaten) !== undefined,
   );
 }
 
@@ -2372,9 +2645,10 @@ function depthAssessment(
   requiredDepthM: number | undefined,
   safetyMarginM: number,
   sourceDiscovery: OfficialSourceDiscovery = emptySourceDiscovery(),
+  datagaten: Datagat[] = [],
 ): TideDeparturePlan["depth_assessment"] {
   const evaluation = evaluateDepth(
-    routeDepthEvidence(variant, sourceDiscovery),
+    routeDepthEvidence(variant, sourceDiscovery, datagaten),
     requiredDepthM,
     safetyMarginM,
   );
@@ -2384,7 +2658,7 @@ function depthAssessment(
     ...(evaluation.available_draught_m !== undefined
       ? { allowed_draught_m: evaluation.available_draught_m }
       : {}),
-    ...(evaluation.available_depth_m !== undefined
+    ...(evaluation.available_depth_m !== undefined && !isAllowedDraughtEvidence(evaluation.evidence_kind)
       ? { available_depth_m: evaluation.available_depth_m }
       : {}),
     ...(evaluation.required_depth_m !== undefined ? { required_depth_m: evaluation.required_depth_m } : {}),
@@ -2396,11 +2670,26 @@ function depthAssessment(
   };
 }
 
+function isAllowedDraughtEvidence(kind: DepthEvidenceKind | undefined): boolean {
+  return kind === "route_allowed_draught" || kind === "section_allowed_draught";
+}
+
 function routeDepthEvidence(
   variant: RouteVariant | undefined,
   sourceDiscovery: OfficialSourceDiscovery,
+  datagaten: Datagat[] = [],
 ): DepthEvidence | undefined {
   const candidates: Array<{ evidence: DepthEvidence; availableDepthM: number }> = [];
+  const routeDimensionLimitCm = routeDimensionLimitFromDatagaten(datagaten);
+  if (routeDimensionLimitCm !== undefined) {
+    candidates.push({
+      evidence: routeAllowedDraughtEvidence(
+        routeDimensionLimitCm,
+        "EuRIS RouteCalculatorV2 ShipDimensions DimensionMessages",
+      ),
+      availableDepthM: routeDimensionLimitCm / 100,
+    });
+  }
   if (variant?.maxAfmetingen?.diepgangCm !== undefined) {
     candidates.push({
       evidence: routeAllowedDraughtEvidence(variant.maxAfmetingen.diepgangCm),
@@ -2422,6 +2711,15 @@ function routeDepthEvidence(
     });
   }
   return candidates.sort((a, b) => a.availableDepthM - b.availableDepthM)[0]?.evidence;
+}
+
+function routeDimensionLimitFromDatagaten(datagaten: Datagat[]): number | undefined {
+  const limits = datagaten
+    .filter((gap) => gap.code === "euris-route-ship-dimensions")
+    .flatMap((gap) => [...gap.message.matchAll(/\bdraught\s+(\d+(?:[.,]\d+)?)\s*cm\b/gi)])
+    .map((match) => Number(match[1]?.replace(",", ".")))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return limits.length ? Math.min(...limits) : undefined;
 }
 
 function currentSummaryFor(routeTideDependent: boolean | undefined, req: TideDepartureRequest): string {

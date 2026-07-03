@@ -308,6 +308,7 @@ describe("getVoyage", () => {
     const r = await getVoyage(ISRS_A, ISRS_B, { diepgangCm: 350 });
     expect(r.data).toBeUndefined();
     expect(r.datagaten[0]?.code).toBe("euris-route-ship-dimensions");
+    expect(r.datagaten[0]?.severity).toBe("blocking");
     expect(r.datagaten[0]?.message).toContain("Merwedekanaal");
   });
 

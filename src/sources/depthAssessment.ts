@@ -90,32 +90,45 @@ export function evaluateDepth(
     required_depth_m: requiredDepthM,
     margin_m: clearanceM,
   } satisfies Partial<DepthEvaluation>;
+  const label = depthLabel(evidence.kind);
   if (clearanceM < 0) {
     return {
       status: "insufficient",
-      summary: `Benodigde diepte met marge is ${requiredDepthM} m, maar de dieptebasis geeft maximaal ${resolved.availableDepthM} m.`,
+      summary:
+        evidence.kind === "route_allowed_draught" || evidence.kind === "section_allowed_draught"
+          ? `Vereiste diepgang inclusief marge is ${requiredDepthM} m, maar de toegestane diepgang op ${label} is maximaal ${resolved.availableDepthM} m.`
+          : `Benodigde diepte met marge is ${requiredDepthM} m, maar ${label} geeft maximaal ${resolved.availableDepthM} m.`,
       ...common,
     };
   }
   if (clearanceM < safetyMarginM) {
     return {
       status: "warn",
-      summary: `De dieptebasis geeft ${resolved.availableDepthM} m; resterende marge boven de gevraagde veiligheidsmarge is ${clearanceM} m.`,
+      summary:
+        evidence.kind === "route_allowed_draught" || evidence.kind === "section_allowed_draught"
+          ? `De toegestane diepgang op ${label} is ${resolved.availableDepthM} m; resterende marge boven de gevraagde veiligheidsmarge is ${clearanceM} m.`
+          : `${label} geeft ${resolved.availableDepthM} m; resterende marge boven de gevraagde veiligheidsmarge is ${clearanceM} m.`,
       ...common,
     };
   }
   return {
     status: "ok",
-    summary: `De dieptebasis geeft ${resolved.availableDepthM} m; vereist met marge is ${requiredDepthM} m.`,
+    summary:
+      evidence.kind === "route_allowed_draught" || evidence.kind === "section_allowed_draught"
+        ? `De toegestane diepgang op ${label} is ${resolved.availableDepthM} m; vereist inclusief marge is ${requiredDepthM} m.`
+        : `${label} geeft ${resolved.availableDepthM} m; vereist met marge is ${requiredDepthM} m.`,
     ...common,
   };
 }
 
-export function routeAllowedDraughtEvidence(availableDraughtCm: number | undefined): DepthEvidence {
+export function routeAllowedDraughtEvidence(
+  availableDraughtCm: number | undefined,
+  source = "EuRIS RouteCalculatorV2 AllowedDimensions.Draught",
+): DepthEvidence {
   return {
     kind: "route_allowed_draught",
     availableDraughtCm,
-    source: "EuRIS RouteCalculatorV2 AllowedDimensions.Draught",
+    source,
   };
 }
 
@@ -220,6 +233,14 @@ function resolveAvailableDepth(evidence: DepthEvidence): {
     rejectedReason:
       "Ruwe waterhoogte is geen dieptebasis. Nodig is minst gepeilde diepte, route/sectie-diepgang of een expliciete datumkoppeling met de bodem-/vaardiepte.",
   };
+}
+
+function depthLabel(kind: DepthEvidenceKind): string {
+  if (kind === "route_allowed_draught") return "routebasis";
+  if (kind === "section_allowed_draught") return "sectiebasis";
+  if (kind === "least_sounded_depth") return "minst gepeilde diepte";
+  if (kind === "datum_adjusted_depth") return "datum-gecorrigeerde diepte";
+  return "ruwe waterhoogte";
 }
 
 function normalize(value: string): string {

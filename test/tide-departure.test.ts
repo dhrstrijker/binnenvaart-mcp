@@ -300,6 +300,95 @@ describe("getTideDepartureWindow", () => {
     );
   });
 
+  it("scores candidate windows against an arrival constraint using route duration", async () => {
+    mockFetch((url, init) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Europoort")) {
+        return {
+          items: [
+            {
+              isrs: EUROPOORT_AREA,
+              nationalObjectName: "Europoort",
+              functionMessage: "Port Area",
+              fairwayName: "Nieuwe Waterweg",
+              locationName: "Rotterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Amsterdam")) {
+        return {
+          items: [
+            {
+              isrs: AMSTERDAM_AREA,
+              nationalObjectName: "Amsterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Noordzeekanaal",
+              locationName: "Amsterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        JSON.parse(String(init?.body));
+        return voyageOk({ AllowedDimensions: { Draught: 520 }, TotalDuration: 36000 });
+      }
+      if (url.includes("/api/chart/get")) {
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T01:00:00Z", -70],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T03:00:00Z", -60],
+          ["2026-07-03T04:00:00Z", 0],
+          ["2026-07-03T05:00:00Z", 80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T07:00:00Z", 100],
+          ["2026-07-03T08:00:00Z", 40],
+          ["2026-07-03T09:00:00Z", -10],
+          ["2026-07-03T10:00:00Z", -70],
+          ["2026-07-03T11:00:00Z", -80],
+          ["2026-07-03T12:00:00Z", -60],
+          ["2026-07-03T13:00:00Z", -20],
+          ["2026-07-03T14:00:00Z", 100],
+          ["2026-07-03T15:00:00Z", 110],
+          ["2026-07-03T16:00:00Z", 90],
+          ["2026-07-03T18:00:00Z", -60],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Europoort",
+      destination: "Amsterdam",
+      route_hint: "Lek",
+      date: "2026-07-03",
+      arrival_by: "2026-07-03T18:00:00+02:00",
+      draft_m: 4.5,
+      safety_margin_m: 0.3,
+      preference: "stroom mee",
+    });
+
+    const windows = result.data?.candidate_windows ?? [];
+    expect(windows[0]?.score).toMatchObject({
+      route_duration_minutes: 600,
+      estimated_arrival_at: "2026-07-03T13:00:00.000Z",
+      arrival_by: "2026-07-03T16:00:00.000Z",
+      arrival_constraint: "meets",
+      arrival_margin_minutes: 180,
+      latest_departure_to_meet_arrival: "2026-07-03T06:00:00.000Z",
+    });
+    expect(windows[0]?.score?.decision_basis).toEqual(
+      expect.arrayContaining(["Voldoet aan de aankomstconstraint."]),
+    );
+    expect(windows.some((window) => window.score?.arrival_constraint === "misses")).toBe(true);
+    expect(windows[0]?.score?.numeric_score ?? 0).toBeGreaterThan(
+      windows.find((window) => window.score?.arrival_constraint === "misses")?.score?.numeric_score ?? 0,
+    );
+  });
+
   it("flags official tide source freshness when Waterinfo omits a timestamp", async () => {
     mockFetch((url) => {
       const decoded = decodeURIComponent(url);
@@ -902,6 +991,95 @@ describe("getTideDepartureWindow", () => {
       margin_m: -0.15,
     });
     expect(result.data?.summary).toContain("maximaal 4.65 m");
+  });
+
+  it("treats a EuRIS ShipDimensions route rejection as a blocking draught limit", async () => {
+    mockFetch((url) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Europoort")) {
+        return {
+          items: [
+            {
+              isrs: EUROPOORT_AREA,
+              nationalObjectName: "Europoort",
+              functionMessage: "Port Area",
+              fairwayName: "Nieuwe Waterweg",
+              locationName: "Rotterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Amsterdam")) {
+        return {
+          items: [
+            {
+              isrs: AMSTERDAM_AREA,
+              nationalObjectName: "Amsterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Noordzeekanaal",
+              locationName: "Amsterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        return {
+          Itineraries: [],
+          Success: false,
+          ErrorReason: "ShipDimensions",
+          ErrorMessage: "too deep",
+          ErrorTags: {
+            DimensionMessages:
+              "Vaarweg vanaf Oude-Wetering via Leiden en Delft naar Rotterdam (draught 250cm), Lekkanaal (draught 400cm)",
+          },
+        };
+      }
+      if (url.includes("/api/chart/get")) {
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T01:00:00Z", -70],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T03:00:00Z", -60],
+          ["2026-07-03T04:00:00Z", 0],
+          ["2026-07-03T05:00:00Z", 80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T07:00:00Z", 100],
+          ["2026-07-03T08:00:00Z", 40],
+          ["2026-07-03T09:00:00Z", -10],
+          ["2026-07-03T10:00:00Z", -70],
+          ["2026-07-03T11:00:00Z", -80],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Europoort",
+      destination: "Amsterdam",
+      draft_m: 4.5,
+      safety_margin_m: 0.3,
+      preference: "stroom mee",
+    });
+
+    expect(result.data?.verdict.status).toBe("stop");
+    expect(result.data?.depth_assessment).toMatchObject({
+      status: "insufficient",
+      evidence_kind: "route_allowed_draught",
+      allowed_draught_m: 2.5,
+      required_depth_m: 4.8,
+    });
+    expect(result.data?.candidate_windows[0]).toMatchObject({
+      status: "blocked",
+      label: "Niet vertrekken",
+    });
+    expect(result.datagaten).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "euris-route-ship-dimensions", severity: "blocking" }),
+      ]),
+    );
+    expect(result.datagaten.map((gap) => gap.code)).not.toContain("tide-departure-depth-basis-missing");
   });
 
   it("flags a Wadden high-water request when official tide extrema are not wired", async () => {
