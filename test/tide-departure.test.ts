@@ -2364,4 +2364,157 @@ describe("getTideDepartureWindow", () => {
     );
     expect(result.data?.route_sections[0]?.current_evidence?.basis).toContain("Waterinfo Vlaanderen/KiWIS");
   });
+
+  it("uses KiWIS H-measurements as water-level fallback when no H-forecast is available", async () => {
+    mockFetch((url) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Antwerpen")) {
+        return {
+          items: [
+            {
+              isrs: ANTWERP_AREA,
+              nationalObjectName: "Antwerpen",
+              functionMessage: "Port Area",
+              fairwayName: "Schelde",
+              locationName: "Antwerpen",
+              countryCode: "BE",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Gent")) {
+        return {
+          items: [
+            {
+              isrs: "BE888888888888888888",
+              nationalObjectName: "Gent",
+              functionMessage: "Port Area",
+              fairwayName: "Schelde",
+              locationName: "Gent",
+              countryCode: "BE",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        return voyageOk({
+          AllowedDimensions: { Draught: 430 },
+          Legs: [
+            {
+              FromObjectName: "Antwerpen",
+              ToObjectName: "Gent",
+              Segments: [
+                {
+                  SegmentName: "Schelde Antwerpen",
+                  WaterwayName: "Schelde",
+                  FairwaySectionId: "BE-SCHELDE-1",
+                  Authority: "De Vlaamse Waterweg nv",
+                  Direction: "UPSTREAM",
+                  ETA: "2026-07-03T10:00:00Z",
+                  ETD: "2026-07-03T08:00:00Z",
+                  Length: 32000,
+                  Dimensions: { Draught: 430 },
+                  CountryCodes: ["BE"],
+                  Events: [
+                    { EventType: "Point", ObjectName: "Albertdok", Latitude: 51.291, Longitude: 4.313 },
+                    { EventType: "Point", ObjectName: "Schelde", Latitude: 51.27, Longitude: 4.25 },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (url.includes("getStationList")) {
+        return [
+          ["station_name", "station_no", "station_id", "station_latitude", "station_longitude"],
+          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "51.2914621908115", "4.31336706809401"],
+        ];
+      }
+      if (url.includes("getTimeseriesList")) {
+        return [
+          [
+            "station_name",
+            "station_no",
+            "station_id",
+            "ts_id",
+            "ts_name",
+            "parametertype_id",
+            "parametertype_name",
+            "ts_unitsymbol",
+          ],
+          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0121323042", "P.15", "01559", "H", "m"],
+          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0177773042", "Drempel hoog", "01559", "H", "m"],
+          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0188883042", "AlarmStatus", "GEN", "Generic", ""],
+        ];
+      }
+      if (url.includes("getTimeseriesValues")) {
+        return [
+          {
+            ts_id: "0121323042",
+            rows: "2",
+            columns: "Timestamp,Value",
+            data: [
+              ["2026-07-03T09:30:00+02:00", "4.28"],
+              ["2026-07-03T10:00:00+02:00", "4.31"],
+            ],
+          },
+        ];
+      }
+      if (url.includes("/api/chart/get")) {
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T10:00:00Z", -70],
+          ["2026-07-03T14:00:00Z", 100],
+          ["2026-07-03T18:00:00Z", -60],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Antwerpen",
+      destination: "Gent",
+      route_hint: "Schelde",
+      draft_m: 3.5,
+      preference: "stroom mee",
+    });
+
+    expect(result.data?.route_sections[0]?.station_matches[0]).toMatchObject({
+      code: "0120379",
+      label: "Albertdok/Schelde",
+      source: "waterinfo-vlaanderen-kiwis",
+      capabilities: expect.arrayContaining(["water_height_measurement", "water_level_threshold"]),
+    });
+    expect(result.data?.route_sections[0]?.water_level_evidence).toMatchObject({
+      source: "Waterinfo Vlaanderen KiWIS",
+      station: {
+        code: "0120379",
+        label: "Albertdok/Schelde",
+      },
+      ts_id: "0121323042",
+      series_name: "P.15",
+      series_kind: "measurement",
+      series_interval_minutes: 15,
+      series_selection: "measurement_fallback",
+      water_level_m: 4.31,
+      observed_at: "2026-07-03T10:00:00+02:00",
+      rejected_as_depth_basis: true,
+      basis: expect.stringContaining("niet als vaardiepte gebruikt"),
+    });
+    expect(result.data?.route_sections[0]?.missing_data_codes).not.toContain(
+      "tide-departure-section-waterlevel-values-missing",
+    );
+    expect(result.data?.source_freshness).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_id: "waterinfo-vlaanderen-kiwis",
+          subject: "H-waterstandsmeting Albertdok/Schelde",
+          observed_at: "2026-07-03T10:00:00+02:00",
+        }),
+      ]),
+    );
+  });
 });
