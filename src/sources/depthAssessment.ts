@@ -4,6 +4,7 @@ export type DepthEvidenceKind =
   | "route_allowed_draught"
   | "section_allowed_draught"
   | "least_sounded_depth"
+  | "observed_navigable_depth"
   | "datum_adjusted_depth"
   | "raw_water_height";
 
@@ -16,7 +17,7 @@ export type DepthEvidence =
       source: string;
     }
   | {
-      kind: "least_sounded_depth";
+      kind: "least_sounded_depth" | "observed_navigable_depth";
       depthM: number | undefined;
       source: string;
       referenceLevel?: string;
@@ -153,6 +154,19 @@ export function leastSoundedDepthEvidence(
   };
 }
 
+export function observedNavigableDepthEvidence(
+  depthM: number | undefined,
+  source: string,
+  referenceLevel?: string,
+): DepthEvidence {
+  return {
+    kind: "observed_navigable_depth",
+    depthM,
+    source,
+    referenceLevel,
+  };
+}
+
 export function datumAdjustedDepthEvidence(
   baseDepthM: number | undefined,
   waterLevelM: number | undefined,
@@ -174,7 +188,7 @@ function missingDepthBasis(requiredDepthM: number, safetyMarginM: number): Depth
   return {
     status: "missing",
     summary:
-      "De routeberekening gaf geen bruikbare toegestane diepgang, minst gepeilde diepte of datum-gekoppelde dieptebasis terug; genoeg water kan niet worden bevestigd.",
+      "De routeberekening gaf geen bruikbare toegestane diepgang, officiële vaardiepte, minst gepeilde diepte of datum-gekoppelde dieptebasis terug; genoeg water kan niet worden bevestigd.",
     confidence: "missing",
     required_depth_m: requiredDepthM,
     margin_m: safetyMarginM,
@@ -201,18 +215,21 @@ function resolveAvailableDepth(evidence: DepthEvidence): {
       confidence: evidence.kind === "section_allowed_draught" ? "medium" : "low",
     };
   }
-  if (evidence.kind === "least_sounded_depth") {
+  if (evidence.kind === "least_sounded_depth" || evidence.kind === "observed_navigable_depth") {
     if (evidence.depthM === undefined) {
       return {
         confidence: "medium",
         basis: evidence.source,
-        rejectedReason: "Geen numerieke minst gepeilde diepte beschikbaar.",
+        rejectedReason:
+          evidence.kind === "least_sounded_depth"
+            ? "Geen numerieke minst gepeilde diepte beschikbaar."
+            : "Geen numerieke officiële vaardiepte beschikbaar.",
       };
     }
     return {
       availableDepthM: round2(evidence.depthM),
       basis: `${evidence.source}${evidence.referenceLevel ? ` t.o.v. ${evidence.referenceLevel}` : ""}`,
-      confidence: "medium",
+      confidence: evidence.kind === "observed_navigable_depth" ? "high" : "medium",
     };
   }
   if (evidence.kind === "datum_adjusted_depth") {
@@ -256,6 +273,7 @@ function depthLabel(kind: DepthEvidenceKind): string {
   if (kind === "route_allowed_draught") return "routebasis";
   if (kind === "section_allowed_draught") return "sectiebasis";
   if (kind === "least_sounded_depth") return "minst gepeilde diepte";
+  if (kind === "observed_navigable_depth") return "officiële vaardiepte";
   if (kind === "datum_adjusted_depth") return "datum-gecorrigeerde diepte";
   return "ruwe waterhoogte";
 }

@@ -1133,6 +1133,181 @@ describe("getTideDepartureWindow", () => {
     );
   });
 
+  it("uses fresh RWS DDAPI20 VAARDTE as official observed navigable depth evidence", async () => {
+    const observedRequests: Array<{ locationCode?: string; quantityCode?: string }> = [];
+    mockFetch((url, init) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Rotterdam")) {
+        return {
+          items: [
+            {
+              isrs: "NL666666666666666666",
+              nationalObjectName: "Rotterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Nieuwe Maas",
+              locationName: "Rotterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Amsterdam")) {
+        return {
+          items: [
+            {
+              isrs: AMSTERDAM_AREA,
+              nationalObjectName: "Amsterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Noordzeekanaal",
+              locationName: "Amsterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        return voyageOk({
+          AllowedDimensions: { Height: 900 },
+          Legs: [
+            {
+              FromObjectName: "Rotterdam",
+              ToObjectName: "Amsterdam",
+              Segments: [
+                {
+                  SegmentName: "Hagestein - Lek",
+                  WaterwayName: "Lek",
+                  FairwaySectionId: "FS-LEK-HAGESTEIN",
+                  Authority: "Rijkswaterstaat",
+                  Direction: "UPSTREAM",
+                  ETA: "2026-07-03T12:00:00Z",
+                  ETD: "2026-07-03T11:30:00Z",
+                  Length: 12500,
+                  CountryCodes: ["NL"],
+                  Events: [
+                    { EventType: "Point", ObjectName: "Hagestein start", Latitude: 51.98, Longitude: 5.12 },
+                    { EventType: "Point", ObjectName: "Hagestein end", Latitude: 51.99, Longitude: 5.15 },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (url.includes("OphalenCatalogus")) {
+        return {
+          LocatieLijst: [
+            {
+              Locatie_MessageID: 20,
+              Code: "hagestein.beneden",
+              Naam: "Hagestein, beneden",
+              Omschrijving: "Lek bij Hagestein beneden",
+              Lat: 51.99,
+              Lon: 5.13,
+            },
+          ],
+          AquoMetadataLijst: [
+            {
+              AquoMetadata_MessageID: 30,
+              Compartiment: { Code: "OW" },
+              Grootheid: { Code: "VAARDTE" },
+              ProcesType: "meting",
+              Eenheid: { Code: "cm" },
+              Parameter_Wat_Omschrijving: "Vaardiepte in Oppervlaktewater t.o.v. waterspiegel in cm",
+            },
+          ],
+          AquoMetadataLocatieLijst: [{ AquoMetaData_MessageID: 30, Locatie_MessageID: 20 }],
+        };
+      }
+      if (url.includes("OphalenWaarnemingen")) {
+        const body = JSON.parse(String(init?.body)) as {
+          Locatie?: { Code?: string };
+          AquoPlusWaarnemingMetadata?: { AquoMetadata?: { Grootheid?: { Code?: string } } };
+        };
+        observedRequests.push({
+          locationCode: body.Locatie?.Code,
+          quantityCode: body.AquoPlusWaarnemingMetadata?.AquoMetadata?.Grootheid?.Code,
+        });
+        return {
+          Succesvol: true,
+          WaarnemingenLijst: [
+            {
+              MetingenLijst: [
+                {
+                  Tijdstip: "2026-07-03T11:45:00.000Z",
+                  Meetwaarde: { Waarde_Numeriek: 520 },
+                  Eenheid: { Code: "cm" },
+                  Kwaliteitswaardecode: "00",
+                },
+              ],
+            },
+          ],
+        };
+      }
+      if (url.includes("/api/v3/timeseries") && decoded.includes("definedParameterCode eq 'LSD'")) {
+        return { items: [] };
+      }
+      if (url.includes("/api/chart/get")) {
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T10:00:00Z", -70],
+          ["2026-07-03T14:00:00Z", 100],
+          ["2026-07-03T18:00:00Z", -60],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Rotterdam",
+      destination: "Amsterdam",
+      preferred_departure: "2026-07-03T11:30:00Z",
+      draft_m: 4.5,
+      safety_margin_m: 0.3,
+      preference: "stroom mee",
+    });
+
+    expect(observedRequests).toEqual([{ locationCode: "hagestein.beneden", quantityCode: "VAARDTE" }]);
+    expect(result.datagaten.map((d) => d.code)).not.toContain("tide-departure-depth-basis-missing");
+    expect(result.data?.depth_assessment).toMatchObject({
+      status: "ok",
+      evidence_kind: "observed_navigable_depth",
+      available_depth_m: 5.2,
+      required_depth_m: 4.8,
+      basis: expect.stringContaining("Rijkswaterstaat DDAPI20 VAARDTE Hagestein, beneden"),
+    });
+    expect(result.data?.depth_assessment.basis).toContain("t.o.v. waterspiegel");
+    expect(result.data?.route_sections[0]).toMatchObject({
+      passage_time: "2026-07-03T11:45:00.000Z",
+      depth_status: "ok",
+      depth_evidence_kind: "observed_navigable_depth",
+      depth_confidence: "high",
+      available_depth_m: 5.2,
+      depth_basis: expect.stringContaining("Rijkswaterstaat DDAPI20 VAARDTE Hagestein, beneden"),
+    });
+    expect(result.data?.source_freshness).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_id: "rws-ddapi20",
+          subject: "Vaardiepte Hagestein, beneden",
+          status: "fresh",
+          observed_at: "2026-07-03T11:45:00.000Z",
+        }),
+      ]),
+    );
+    expect(result.data?.source_discovery).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_id: "rws-ddapi20",
+          status: "available",
+          coverage_count: 1,
+          note: expect.stringContaining("VAARDTE"),
+        }),
+      ]),
+    );
+  });
+
   it("uses datum-adjusted base depth and water height only when reference levels match", async () => {
     mockFetch((url) => {
       const decoded = decodeURIComponent(url);

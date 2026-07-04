@@ -292,6 +292,7 @@ export function capabilitiesForMetadata(metadata: RwsCatalogMetadata): DataCapab
   );
   const capabilities = new Set<DataCapability>();
   if (codes.has("WATHTE")) capabilities.add("water_height_forecast");
+  if (codes.has("VAARDTE")) capabilities.add("depth_basis");
   if (["GETETBRKD2", "GETETBRKDMSL2", "GETETM2", "GETETMSL2"].some((code) => codes.has(code))) {
     capabilities.add("tide_extrema");
   }

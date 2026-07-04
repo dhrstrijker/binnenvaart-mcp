@@ -377,6 +377,7 @@ function rwsCatalogStationMatches(
       "tide_extrema",
       "current_speed",
       "current_direction",
+      "depth_basis",
       "discharge",
     ],
     limit: 24,

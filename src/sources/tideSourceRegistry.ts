@@ -73,6 +73,7 @@ export const SOURCE_REGISTRY: SourceRegistryEntry[] = [
       "tide_extrema",
       "current_speed",
       "current_direction",
+      "depth_basis",
       "discharge",
     ],
     documentation_url: "https://rijkswaterstaatdata.nl/waterdata/",
@@ -90,6 +91,7 @@ export const SOURCE_REGISTRY: SourceRegistryEntry[] = [
     notes: [
       "Gebruik de nieuwe ddapi20-waterwebservices host; de klassieke waterwebservices-host wordt uitgefaseerd.",
       "Ontdek eerst de catalogus en filter daarna op locatie, grootheid, groepering en procestype.",
+      "VAARDTE wordt behandeld als officiële vaardiepte t.o.v. waterspiegel. WATDTE wordt niet als route-dieptebasis gebruikt omdat de publieke catalogus vooral strand-/recreatiewaterdieptes bevat.",
     ],
   },
   {
@@ -242,6 +244,20 @@ export const PARAMETER_CONTRACTS: ParameterContract[] = [
     },
     interpretation_note:
       "Grouped tide extremes include water level and high/low-water type; request the groepering explicitly.",
+  },
+  {
+    id: "rws-ddapi20-navigable-depth",
+    source_id: "rws-ddapi20",
+    capability: "depth_basis",
+    label: "Rijkswaterstaat vaardiepte",
+    aquo: {
+      compartiment_code: "OW",
+      grootheid_code: "VAARDTE",
+      proces_types: ["meting", "verwachting"],
+    },
+    unit_note: "RWS VAARDTE is gecatalogiseerd in cm als vaardiepte t.o.v. waterspiegel.",
+    interpretation_note:
+      "VAARDTE mag een officiële sectie-diepteclaim dragen wanneer de locatie aan de route-sectie matcht en de waarde vers rond de sectiepassage is opgehaald. Gebruik WATDTE strand-/recreatiewaterdieptes niet als vaarwegdiepte.",
   },
   {
     id: "waterinfo-vlaanderen-water-height-forecast",

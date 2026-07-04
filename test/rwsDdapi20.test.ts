@@ -187,6 +187,8 @@ describe("RWS DDAPI20 adapter helpers", () => {
       "current_direction",
     ]);
     expect(capabilitiesForMetadata({ messageId: 5, quantityCode: "Q" })).toEqual(["discharge"]);
+    expect(capabilitiesForMetadata({ messageId: 6, quantityCode: "VAARDTE" })).toEqual(["depth_basis"]);
+    expect(capabilitiesForMetadata({ messageId: 7, quantityCode: "WATDTE" })).toEqual([]);
   });
 
   it("builds observation requests from catalog coverage metadata", () => {

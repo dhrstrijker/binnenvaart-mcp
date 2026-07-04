@@ -20,6 +20,7 @@ import {
   evaluateDepth,
   datumAdjustedDepthEvidence,
   leastSoundedDepthEvidence,
+  observedNavigableDepthEvidence,
   routeAllowedDraughtEvidence,
   sectionAllowedDraughtEvidence,
   type DepthConfidence,
@@ -39,6 +40,7 @@ import {
   getRwsObservationsForCoverage,
   rwsCatalogBody,
   type RwsCatalogCoverage,
+  type RwsObservationPoint,
 } from "./rwsDdapi20.js";
 import { evaluateDirectCurrent, type DirectCurrentEvaluation } from "./currentAssessment.js";
 import {
@@ -76,6 +78,8 @@ const MAX_KIWIS_CURRENT_SECTIONS = 4;
 const WATERINFO_TIDE_HEIGHT_WINDOW_MINUTES = 90;
 const MAX_EURIS_DEPTH_SECTIONS = 6;
 const MAX_EURIS_DEPTH_QUERIES_PER_SECTION = 6;
+const RWS_DEPTH_WINDOW_MINUTES = 60;
+const MAX_RWS_DEPTH_SECTIONS = 8;
 
 let cachedRwsDiscovery:
   | {
@@ -432,6 +436,8 @@ interface OfficialSourceDiscovery {
   directCurrentFreshness: SourceFreshnessSummary[];
   kiwisWaterLevelBySectionKey: Map<string, KiwisWaterLevelEvidence>;
   kiwisWaterLevelFreshness: SourceFreshnessSummary[];
+  rwsDepthBySectionKey: Map<string, RwsDepthSectionEvidence>;
+  rwsDepthFreshness: SourceFreshnessSummary[];
   eurisDepthBySectionKey: Map<string, EurisDepthSectionEvidence>;
   eurisDepthFreshness: SourceFreshnessSummary[];
   bronregels: Bronregel[];
@@ -466,6 +472,19 @@ interface KiwisWaterLevelEvidence {
   freshness: SourceFreshnessSummary;
   rejected_as_depth_basis: true;
   basis: string;
+}
+
+interface RwsDepthSectionEvidence {
+  sectionKey: string;
+  station: {
+    code: string;
+    label: string;
+  };
+  depth_m: number;
+  observed_at: string;
+  unit?: string;
+  freshness: SourceFreshnessSummary;
+  source: string;
 }
 
 interface EurisDepthSectionEvidence {
@@ -605,6 +624,21 @@ export async function getTideDepartureWindow(
   bronregels.push(...kiwisWaterLevels.bronregels);
   datagaten.push(...kiwisWaterLevels.datagaten);
 
+  const rwsDepth = await loadRwsNavigableDepthObservations(
+    variant,
+    voyage?.vertrek,
+    req,
+    origin.anchor,
+    destination.anchor,
+    tideEstimate,
+    sourceDiscovery,
+  );
+  sourceDiscovery.rwsDepthBySectionKey = rwsDepth.rwsDepthBySectionKey;
+  sourceDiscovery.rwsDepthFreshness = rwsDepth.rwsDepthFreshness;
+  sourceDiscovery.summaries = [...sourceDiscovery.summaries, ...rwsDepth.summaries];
+  bronregels.push(...rwsDepth.bronregels);
+  datagaten.push(...rwsDepth.datagaten);
+
   const eurisDepth = await loadEurisLeastSoundedDepthValues(variant);
   sourceDiscovery.eurisDepthBySectionKey = eurisDepth.eurisDepthBySectionKey;
   sourceDiscovery.eurisDepthFreshness = eurisDepth.eurisDepthFreshness;
@@ -622,7 +656,7 @@ export async function getTideDepartureWindow(
     datagaten.push({
       code: "tide-departure-depth-basis-missing",
       message:
-        "Geen bruikbare dieptebasis gevonden. De tool vergelijkt geen ruwe waterstand met diepgang; nodig is een routediepgang, minst gepeilde diepte of andere expliciete dieptebasis.",
+        "Geen bruikbare dieptebasis gevonden. De tool vergelijkt geen ruwe waterstand met diepgang; nodig is een routediepgang, officiële vaardiepte, minst gepeilde diepte of andere expliciete dieptebasis.",
       severity: "blocking",
     });
   }
@@ -803,6 +837,8 @@ function emptySourceDiscovery(): OfficialSourceDiscovery {
     directCurrentFreshness: [],
     kiwisWaterLevelBySectionKey: new Map(),
     kiwisWaterLevelFreshness: [],
+    rwsDepthBySectionKey: new Map(),
+    rwsDepthFreshness: [],
     eurisDepthBySectionKey: new Map(),
     eurisDepthFreshness: [],
     bronregels: [],
@@ -1529,6 +1565,267 @@ function softenKiwisValueDatagaten(gaps: Datagat[]): Datagat[] {
     ...gap,
     severity: "caution",
     message: `Waterinfo Vlaanderen/KiWIS H-waterstand niet bruikbaar voor sectiecontext. ${gap.message}`,
+  }));
+}
+
+async function loadRwsNavigableDepthObservations(
+  variant: RouteVariant | undefined,
+  routeDepartureIso: string | undefined,
+  req: TideDepartureRequest,
+  origin: PlanningAnchor | undefined,
+  destination: PlanningAnchor | undefined,
+  tideEstimate: TideCurrentEstimate | undefined,
+  sourceDiscovery: OfficialSourceDiscovery,
+): Promise<
+  Pick<
+    OfficialSourceDiscovery,
+    "rwsDepthBySectionKey" | "rwsDepthFreshness" | "bronregels" | "datagaten" | "summaries"
+  >
+> {
+  const rwsDepthBySectionKey = new Map<string, RwsDepthSectionEvidence>();
+  const rwsDepthFreshness: SourceFreshnessSummary[] = [];
+  const bronregels: Bronregel[] = [];
+  const datagaten: Datagat[] = [];
+  const source = sourceById("rws-ddapi20");
+  if (!variant?.secties.some((section) => section.countryCodes.includes("NL"))) {
+    return {
+      rwsDepthBySectionKey,
+      rwsDepthFreshness,
+      bronregels,
+      datagaten,
+      summaries: [
+        {
+          source_id: "rws-ddapi20",
+          source_label: source.label,
+          status: "skipped",
+          note: "Geen Nederlandse route-sectie gevonden waarvoor RWS VAARDTE-vaardiepte kan worden gekoppeld.",
+        },
+      ],
+    };
+  }
+  if (sourceDiscovery.rwsCatalogCoverage.length === 0) {
+    return {
+      rwsDepthBySectionKey,
+      rwsDepthFreshness,
+      bronregels,
+      datagaten,
+      summaries: [
+        {
+          source_id: "rws-ddapi20",
+          source_label: source.label,
+          status: "unavailable",
+          note: "RWS DDAPI20-catalogusdekking ontbreekt; VAARDTE-vaardiepte kan niet aan route-secties worden gekoppeld.",
+        },
+      ],
+    };
+  }
+  if (process.env.RWS_DDAPI20_DEPTH_OBSERVATIONS === "0") {
+    return {
+      rwsDepthBySectionKey,
+      rwsDepthFreshness,
+      bronregels,
+      datagaten: [
+        {
+          code: "rws-ddapi20-navigable-depth-skipped",
+          message: "RWS DDAPI20 VAARDTE-vaardiepte is uitgeschakeld via RWS_DDAPI20_DEPTH_OBSERVATIONS=0.",
+          severity: "caution",
+        },
+      ],
+      summaries: [
+        {
+          source_id: "rws-ddapi20",
+          source_label: source.label,
+          status: "skipped",
+          note: "RWS DDAPI20 VAARDTE-vaardiepte is uitgeschakeld.",
+        },
+      ],
+    };
+  }
+
+  const timelineStartIso = firstSectionDeparture(variant) ?? routeDepartureIso;
+  const candidateDepartureIso =
+    req.preferred_departure ??
+    tideEstimate?.windows.find((window) => window.start)?.start ??
+    timelineStartIso;
+  if (!timelineStartIso || !candidateDepartureIso) {
+    return {
+      rwsDepthBySectionKey,
+      rwsDepthFreshness,
+      bronregels,
+      datagaten,
+      summaries: [
+        {
+          source_id: "rws-ddapi20",
+          source_label: source.label,
+          status: "skipped",
+          note: "Geen route- en kandidaatvertrektijd beschikbaar; RWS VAARDTE kan niet rond een sectiepassage worden opgehaald.",
+        },
+      ],
+    };
+  }
+
+  const routeTextValue =
+    origin && destination
+      ? routeText(req, origin, destination)
+      : normalize(
+          [req.origin, req.destination, req.route_hint, req.preference, req.context]
+            .filter(Boolean)
+            .join(" "),
+        );
+
+  let attemptedSections = 0;
+  const attemptedLocations = new Set<string>();
+  for (const section of variant.secties) {
+    if (attemptedSections >= MAX_RWS_DEPTH_SECTIONS) break;
+    if (!section.countryCodes.includes("NL")) continue;
+    const key = sectionKey(section);
+    const passageTime = candidatePassageTime(section, timelineStartIso, candidateDepartureIso);
+    if (!passageTime) continue;
+    const stationMatches = matchOfficialStations(
+      section,
+      routeTextValue,
+      sourceDiscovery.rwsCatalogCoverage,
+      sourceDiscovery.kiwisStationCoverage,
+    );
+    const depthMatches = stationMatches.filter(
+      (match) => match.source === "rws-ddapi20" && match.capabilities.includes("depth_basis"),
+    );
+    if (!depthMatches.length) continue;
+
+    attemptedSections += 1;
+    const window = observationWindowAround(passageTime, RWS_DEPTH_WINDOW_MINUTES);
+    let selected = false;
+    for (const depthMatch of depthMatches) {
+      const attemptKey = `${depthMatch.code}:${window.startIso}:${window.endIso}`;
+      if (attemptedLocations.has(attemptKey)) continue;
+      attemptedLocations.add(attemptKey);
+
+      const coverage = rwsCoverageFor(sourceDiscovery.rwsCatalogCoverage, depthMatch.code, "depth_basis");
+      if (!coverage) continue;
+
+      const result = await getRwsObservationsForCoverage(coverage, window.startIso, window.endIso);
+      bronregels.push(...result.bronregels);
+      datagaten.push(...softenRwsDepthDatagaten(result.datagaten));
+
+      const nearest = nearestRwsObservationPoint(result.data ?? [], passageTime, RWS_DEPTH_WINDOW_MINUTES);
+      if (!nearest) {
+        datagaten.push({
+          code: "rws-ddapi20-navigable-depth-nearest-missing",
+          message: `RWS DDAPI20 VAARDTE voor ${depthMatch.label} leverde geen bruikbare waarde dicht bij passage ${passageTime}.`,
+          severity: "caution",
+        });
+        continue;
+      }
+
+      const depthM = rwsNavigableDepthMeters(nearest, coverage);
+      if (depthM === undefined) {
+        datagaten.push({
+          code: "rws-ddapi20-navigable-depth-unit-unknown",
+          message: `RWS DDAPI20 VAARDTE voor ${depthMatch.label} heeft geen herkende diepte-eenheid (${nearest.unit ?? coverage.metadata.unitCode ?? "onbekend"}); waarde wordt niet als vaardiepte gebruikt.`,
+          severity: "caution",
+        });
+        continue;
+      }
+
+      const freshness = sourceFreshnessSummary(
+        "rws-ddapi20",
+        `Vaardiepte ${depthMatch.label}`,
+        nearest.dateTime,
+      );
+      if (freshness.status !== "fresh") {
+        datagaten.push(sourceFreshnessDatagat(freshness));
+        datagaten.push({
+          code: "rws-ddapi20-navigable-depth-freshness-not-usable",
+          message: `RWS DDAPI20 VAARDTE voor ${depthMatch.label} is niet fris genoeg om een genoeg-water claim te dragen.`,
+          severity: freshness.severity ?? "caution",
+        });
+        continue;
+      }
+
+      rwsDepthFreshness.push(freshness);
+      rwsDepthBySectionKey.set(key, {
+        sectionKey: key,
+        station: {
+          code: depthMatch.code,
+          label: depthMatch.label,
+        },
+        depth_m: depthM,
+        observed_at: nearest.dateTime,
+        ...((nearest.unit ?? coverage.metadata.unitCode)
+          ? { unit: nearest.unit ?? coverage.metadata.unitCode }
+          : {}),
+        freshness,
+        source: `Rijkswaterstaat DDAPI20 VAARDTE ${depthMatch.label} (${depthM} m op ${nearest.dateTime})`,
+      });
+      selected = true;
+      break;
+    }
+
+    if (!selected) {
+      datagaten.push({
+        code: "rws-ddapi20-navigable-depth-not-usable",
+        message: `RWS DDAPI20 VAARDTE is voor sectie ${section.waterwayName ?? section.segmentName ?? key} gevonden, maar leverde geen bruikbare verse vaardiepte rond de passagetijd.`,
+        severity: "caution",
+      });
+    }
+  }
+
+  return {
+    rwsDepthBySectionKey,
+    rwsDepthFreshness,
+    bronregels,
+    datagaten,
+    summaries: [
+      {
+        source_id: "rws-ddapi20",
+        source_label: source.label,
+        status:
+          rwsDepthBySectionKey.size > 0 ? "available" : attemptedSections > 0 ? "unavailable" : "skipped",
+        coverage_count: rwsDepthBySectionKey.size,
+        note:
+          rwsDepthBySectionKey.size > 0
+            ? "RWS DDAPI20 VAARDTE-waarden zijn als officiële sectie-vaardiepte gekoppeld waar station, eenheid en freshness bruikbaar zijn."
+            : attemptedSections > 0
+              ? "RWS DDAPI20 VAARDTE-stations zijn gematcht, maar leverden geen bruikbare verse vaardiepte rond de passagetijden."
+              : "Geen route-sectie matchte op een RWS DDAPI20 VAARDTE-locatie.",
+      },
+    ],
+  };
+}
+
+function nearestRwsObservationPoint(
+  points: RwsObservationPoint[],
+  passageIso: string,
+  maxDeltaMinutes: number,
+): RwsObservationPoint | undefined {
+  const passageMs = Date.parse(passageIso);
+  if (!Number.isFinite(passageMs)) return undefined;
+  let best: { point: RwsObservationPoint; deltaMs: number } | undefined;
+  for (const point of points) {
+    const pointMs = Date.parse(point.dateTime);
+    if (!Number.isFinite(pointMs)) continue;
+    const deltaMs = Math.abs(pointMs - passageMs);
+    if (deltaMs > maxDeltaMinutes * 60_000) continue;
+    if (!best || deltaMs < best.deltaMs) best = { point, deltaMs };
+  }
+  return best?.point;
+}
+
+function rwsNavigableDepthMeters(
+  point: RwsObservationPoint,
+  coverage: RwsCatalogCoverage,
+): number | undefined {
+  const unit = normalize(point.unit ?? coverage.metadata.unitCode ?? "").replace(/\s+/g, "");
+  if (unit === "cm" || unit === "centimeter" || unit === "centimeters") return round2(point.value / 100);
+  if (unit === "m" || unit === "meter" || unit === "meters") return round2(point.value);
+  return undefined;
+}
+
+function softenRwsDepthDatagaten(gaps: Datagat[]): Datagat[] {
+  return gaps.map((gap) => ({
+    ...gap,
+    severity: "caution",
+    message: `RWS DDAPI20 VAARDTE-vaardiepte niet bruikbaar voor sectiediepte. ${gap.message}`,
   }));
 }
 
@@ -2725,6 +3022,13 @@ function depthEvidenceForSection(
       availableDepthM: officialDatumAvailableDepthM,
     });
   }
+  const rwsDepth = sourceDiscovery.rwsDepthBySectionKey.get(sectionKey(section));
+  if (rwsDepth) {
+    candidates.push({
+      evidence: observedNavigableDepthEvidence(rwsDepth.depth_m, rwsDepth.source, "waterspiegel"),
+      availableDepthM: rwsDepth.depth_m,
+    });
+  }
   if (eurisDepth) {
     candidates.push({
       evidence: leastSoundedDepthEvidence(eurisDepth.depth_m, eurisDepth.source, eurisDepth.reference_level),
@@ -2760,6 +3064,7 @@ function hasDepthBasis(
     requestDatumAdjustedDepthEvidence(req) ||
     variant?.maxAfmetingen?.diepgangCm !== undefined ||
     variant?.secties.some((section) => section.dimensions?.diepgangCm !== undefined) ||
+    sourceDiscovery.rwsDepthBySectionKey.size > 0 ||
     sourceDiscovery.eurisDepthBySectionKey.size > 0 ||
     routeDimensionLimitFromDatagaten(datagaten) !== undefined,
   );
@@ -3259,6 +3564,12 @@ function routeDepthEvidence(
       availableDepthM: item.depth_m,
     });
   }
+  for (const item of sourceDiscovery.rwsDepthBySectionKey.values()) {
+    candidates.push({
+      evidence: observedNavigableDepthEvidence(item.depth_m, item.source, "waterspiegel"),
+      availableDepthM: item.depth_m,
+    });
+  }
   const timelineStartIso = variant ? (firstSectionDeparture(variant) ?? routeDepartureIso) : undefined;
   const candidateDepartureIso =
     req.preferred_departure ??
@@ -3602,6 +3913,7 @@ function sourceFreshnessForPlan(
   }
   items.push(...sourceDiscovery.directCurrentFreshness);
   items.push(...sourceDiscovery.kiwisWaterLevelFreshness);
+  items.push(...sourceDiscovery.rwsDepthFreshness);
   items.push(...sourceDiscovery.eurisDepthFreshness);
   return items;
 }
