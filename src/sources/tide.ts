@@ -2676,6 +2676,19 @@ function depthEvidenceForSection(
     });
   }
   const eurisDepth = sourceDiscovery.eurisDepthBySectionKey.get(sectionKey(section));
+  const officialDatumEvidence = officialDatumAdjustedDepthEvidence(
+    eurisDepth,
+    tideEstimate,
+    stationMatches,
+    passageTime,
+  );
+  const officialDatumAvailableDepthM = requestDatumAvailableDepth(officialDatumEvidence);
+  if (officialDatumEvidence && officialDatumAvailableDepthM !== undefined) {
+    candidates.push({
+      evidence: officialDatumEvidence,
+      availableDepthM: officialDatumAvailableDepthM,
+    });
+  }
   if (eurisDepth) {
     candidates.push({
       evidence: leastSoundedDepthEvidence(eurisDepth.depth_m, eurisDepth.source, eurisDepth.reference_level),
@@ -3232,12 +3245,25 @@ function routeDepthEvidence(
       stationMatches,
       passageTime,
     );
+    const officialDatumEvidence = officialDatumAdjustedDepthEvidence(
+      sourceDiscovery.eurisDepthBySectionKey.get(sectionKey(section)),
+      tideEstimate,
+      stationMatches,
+      passageTime,
+    );
     fallbackWaterinfoDatumEvidence ??= waterinfoDatumEvidence;
     const waterinfoDatumAvailableDepthM = requestDatumAvailableDepth(waterinfoDatumEvidence);
     if (waterinfoDatumEvidence && waterinfoDatumAvailableDepthM !== undefined) {
       candidates.push({
         evidence: waterinfoDatumEvidence,
         availableDepthM: waterinfoDatumAvailableDepthM,
+      });
+    }
+    const officialDatumAvailableDepthM = requestDatumAvailableDepth(officialDatumEvidence);
+    if (officialDatumEvidence && officialDatumAvailableDepthM !== undefined) {
+      candidates.push({
+        evidence: officialDatumEvidence,
+        availableDepthM: officialDatumAvailableDepthM,
       });
     }
   }
@@ -3292,6 +3318,42 @@ function waterinfoTideDatumAdjustedDepthEvidence(
     waterLevelM,
     `${req.depth_basis_label?.trim() || "opgegeven basisdiepte"} plus Waterinfo astronomische-getij ${station.station.label} (${waterLevelM} m op ${point.dateTime})`,
     baseReferenceLevel,
+    station.series.reference_plane,
+  );
+}
+
+function officialDatumAdjustedDepthEvidence(
+  eurisDepth: EurisDepthSectionEvidence | undefined,
+  tideEstimate: TideCurrentEstimate | undefined,
+  stationMatches: StationMatch[],
+  passageTime: string | undefined,
+): DepthEvidence | undefined {
+  if (!eurisDepth || !tideEstimate || !passageTime) return undefined;
+
+  const station = matchedWaterinfoTideStation(tideEstimate, stationMatches);
+  if (!station) return undefined;
+  const source = `${eurisDepth.source} plus Waterinfo astronomische-getij ${station.station.label}`;
+  const point = nearestWaterinfoTidePoint(
+    station.series.points,
+    passageTime,
+    WATERINFO_TIDE_HEIGHT_WINDOW_MINUTES,
+  );
+  if (!point) {
+    return datumAdjustedDepthEvidence(
+      eurisDepth.depth_m,
+      undefined,
+      source,
+      eurisDepth.reference_level,
+      station.series.reference_plane,
+    );
+  }
+
+  const waterLevelM = round2(point.value / 100);
+  return datumAdjustedDepthEvidence(
+    eurisDepth.depth_m,
+    waterLevelM,
+    `${source} (${waterLevelM} m op ${point.dateTime})`,
+    eurisDepth.reference_level,
     station.series.reference_plane,
   );
 }

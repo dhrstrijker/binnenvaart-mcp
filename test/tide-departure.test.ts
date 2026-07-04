@@ -1361,6 +1361,261 @@ describe("getTideDepartureWindow", () => {
     });
   });
 
+  it("combines official EuRIS LSD base depth with matched Waterinfo tide height at section passage", async () => {
+    mockFetch((url) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Europoort")) {
+        return {
+          items: [
+            {
+              isrs: EUROPOORT_AREA,
+              nationalObjectName: "Europoort",
+              functionMessage: "Port Area",
+              fairwayName: "Nieuwe Waterweg",
+              locationName: "Rotterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Amsterdam")) {
+        return {
+          items: [
+            {
+              isrs: AMSTERDAM_AREA,
+              nationalObjectName: "Amsterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Noordzeekanaal",
+              locationName: "Amsterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        return voyageOk({
+          AllowedDimensions: { Height: 900 },
+          Legs: [
+            {
+              FromObjectName: "Rotterdam",
+              ToObjectName: "Amsterdam",
+              Segments: [
+                {
+                  SegmentName: "Nieuwe Maas - Lek",
+                  WaterwayName: "Nieuwe Maas",
+                  FairwaySectionId: "FS-ROT-LEK",
+                  Authority: "Rijkswaterstaat",
+                  Direction: "UPSTREAM",
+                  ETA: "2026-07-03T08:30:00Z",
+                  ETD: "2026-07-03T08:00:00Z",
+                  Length: 12500,
+                  CountryCodes: ["NL"],
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (url.includes("/api/v3/timeseries") && decoded.includes("definedParameterCode eq 'LSD'")) {
+        return {
+          items: [
+            {
+              id: "lsd-nieuwe-maas-1",
+              locationName: "Nieuwe Maas - Lek",
+              fairwayName: "Nieuwe Maas",
+              countryCode: "NL",
+              definedParameterCode: "LSD",
+              value: 560,
+              unit: "cm",
+              referenceLevel: "NAP",
+              measuredAt: "2026-07-03T02:45:00Z",
+              dataStatus: 0,
+            },
+          ],
+        };
+      }
+      if (url.includes("OphalenCatalogus")) {
+        return {};
+      }
+      if (url.includes("/api/chart/get")) {
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T01:00:00Z", -70],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T03:00:00Z", -60],
+          ["2026-07-03T03:15:00Z", -50],
+          ["2026-07-03T04:00:00Z", 0],
+          ["2026-07-03T05:00:00Z", 80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T07:00:00Z", 100],
+          ["2026-07-03T08:00:00Z", 40],
+          ["2026-07-03T09:00:00Z", -10],
+          ["2026-07-03T10:00:00Z", -50],
+          ["2026-07-03T11:00:00Z", -70],
+          ["2026-07-03T12:00:00Z", -60],
+          ["2026-07-03T13:00:00Z", -20],
+          ["2026-07-03T14:00:00Z", 70],
+          ["2026-07-03T15:00:00Z", 100],
+          ["2026-07-03T16:00:00Z", 90],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Europoort",
+      destination: "Amsterdam",
+      route_hint: "Lek",
+      date: "2026-07-03",
+      draft_m: 4.5,
+      safety_margin_m: 0.3,
+      preference: "stroom mee",
+    });
+
+    expect(result.datagaten.map((d) => d.code)).not.toContain("tide-departure-depth-basis-missing");
+    expect(result.data?.depth_assessment).toMatchObject({
+      status: "ok",
+      evidence_kind: "datum_adjusted_depth",
+      available_depth_m: 5.1,
+      required_depth_m: 4.8,
+      basis: expect.stringContaining(
+        'EuRIS Hydrometeo_v3 LSD Nieuwe Maas - Lek via query "Nieuwe Maas" plus Waterinfo astronomische-getij Rotterdam, Nieuwe Maas, Boerengat',
+      ),
+    });
+    expect(result.data?.route_sections[0]).toMatchObject({
+      passage_time: "2026-07-03T03:15:00.000Z",
+      depth_status: "ok",
+      depth_evidence_kind: "datum_adjusted_depth",
+      available_depth_m: 5.1,
+      depth_basis: expect.stringContaining("-0.5 m op 2026-07-03T03:15:00Z"),
+    });
+  });
+
+  it("does not combine official EuRIS LSD with Waterinfo tide height when reference levels differ", async () => {
+    mockFetch((url) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Europoort")) {
+        return {
+          items: [
+            {
+              isrs: EUROPOORT_AREA,
+              nationalObjectName: "Europoort",
+              functionMessage: "Port Area",
+              fairwayName: "Nieuwe Waterweg",
+              locationName: "Rotterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Amsterdam")) {
+        return {
+          items: [
+            {
+              isrs: AMSTERDAM_AREA,
+              nationalObjectName: "Amsterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Noordzeekanaal",
+              locationName: "Amsterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        return voyageOk({
+          AllowedDimensions: { Height: 900 },
+          Legs: [
+            {
+              FromObjectName: "Rotterdam",
+              ToObjectName: "Amsterdam",
+              Segments: [
+                {
+                  SegmentName: "Nieuwe Maas - Lek",
+                  WaterwayName: "Nieuwe Maas",
+                  FairwaySectionId: "FS-ROT-LEK",
+                  Authority: "Rijkswaterstaat",
+                  Direction: "UPSTREAM",
+                  ETA: "2026-07-03T08:30:00Z",
+                  ETD: "2026-07-03T08:00:00Z",
+                  Length: 12500,
+                  CountryCodes: ["NL"],
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (url.includes("/api/v3/timeseries") && decoded.includes("definedParameterCode eq 'LSD'")) {
+        return {
+          items: [
+            {
+              id: "lsd-nieuwe-maas-1",
+              locationName: "Nieuwe Maas - Lek",
+              fairwayName: "Nieuwe Maas",
+              countryCode: "NL",
+              definedParameterCode: "LSD",
+              value: 560,
+              unit: "cm",
+              referenceLevel: "TAW",
+              measuredAt: "2026-07-03T02:45:00Z",
+              dataStatus: 0,
+            },
+          ],
+        };
+      }
+      if (url.includes("OphalenCatalogus")) {
+        return {};
+      }
+      if (url.includes("/api/chart/get")) {
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T01:00:00Z", -70],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T03:00:00Z", -60],
+          ["2026-07-03T03:15:00Z", -50],
+          ["2026-07-03T04:00:00Z", 0],
+          ["2026-07-03T05:00:00Z", 80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T07:00:00Z", 100],
+          ["2026-07-03T08:00:00Z", 40],
+          ["2026-07-03T09:00:00Z", -10],
+          ["2026-07-03T10:00:00Z", -50],
+          ["2026-07-03T11:00:00Z", -70],
+          ["2026-07-03T12:00:00Z", -60],
+          ["2026-07-03T13:00:00Z", -20],
+          ["2026-07-03T14:00:00Z", 70],
+          ["2026-07-03T15:00:00Z", 100],
+          ["2026-07-03T16:00:00Z", 90],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Europoort",
+      destination: "Amsterdam",
+      route_hint: "Lek",
+      date: "2026-07-03",
+      draft_m: 4.5,
+      safety_margin_m: 0.3,
+      preference: "stroom mee",
+    });
+
+    expect(result.data?.depth_assessment).toMatchObject({
+      status: "ok",
+      evidence_kind: "least_sounded_depth",
+      available_depth_m: 5.6,
+      basis: expect.stringContaining("t.o.v. TAW"),
+    });
+    expect(result.data?.depth_assessment.basis).not.toContain("plus Waterinfo");
+    expect(result.data?.route_sections[0]).toMatchObject({
+      depth_status: "ok",
+      depth_evidence_kind: "least_sounded_depth",
+      available_depth_m: 5.6,
+    });
+  });
+
   it("rejects Waterinfo tide height as a depth pair when the base reference differs", async () => {
     mockFetch((url) => {
       const decoded = decodeURIComponent(url);
