@@ -73,6 +73,7 @@ const KIWIS_WATER_LEVEL_WINDOW_MINUTES = 60;
 const MAX_KIWIS_WATER_LEVEL_SECTIONS = 4;
 const KIWIS_CURRENT_WINDOW_MINUTES = 60;
 const MAX_KIWIS_CURRENT_SECTIONS = 4;
+const WATERINFO_TIDE_HEIGHT_WINDOW_MINUTES = 90;
 const MAX_EURIS_DEPTH_SECTIONS = 6;
 const MAX_EURIS_DEPTH_QUERIES_PER_SECTION = 6;
 
@@ -1744,7 +1745,6 @@ function basePlan(
   sourceDiscovery: OfficialSourceDiscovery = emptySourceDiscovery(),
 ): TideDeparturePlan {
   const variant = voyage?.varianten[0];
-  const depth = depthAssessment(req, variant, requiredDepthM, safetyMarginM, sourceDiscovery, datagaten);
   const routeTextValue =
     origin && destination
       ? routeText(req, origin, destination)
@@ -1753,6 +1753,17 @@ function basePlan(
             .filter(Boolean)
             .join(" "),
         );
+  const depth = depthAssessment(
+    req,
+    variant,
+    requiredDepthM,
+    safetyMarginM,
+    sourceDiscovery,
+    datagaten,
+    tideEstimate,
+    routeTextValue,
+    voyage?.vertrek,
+  );
   const sectionAssessments = buildSectionAssessments(
     req,
     variant,
@@ -1987,17 +1998,25 @@ function windowSectionAssessment(
   routeTextValue: string,
   sourceDiscovery: OfficialSourceDiscovery,
 ): WindowSectionAssessment {
-  const depth = sectionDepthStatus(
-    depthEvidenceForSection(section, variant, req, sourceDiscovery),
-    requiredDepthM,
-    safetyMarginM,
-  );
   const passageTime = candidatePassageTime(section, timelineStartIso, candidateDepartureIso);
   const stationMatches = matchOfficialStations(
     section,
     routeTextValue,
     sourceDiscovery.rwsCatalogCoverage,
     sourceDiscovery.kiwisStationCoverage,
+  );
+  const depth = sectionDepthStatus(
+    depthEvidenceForSection(
+      section,
+      variant,
+      req,
+      sourceDiscovery,
+      tideEstimate,
+      stationMatches,
+      passageTime,
+    ),
+    requiredDepthM,
+    safetyMarginM,
   );
   const currentEvidence = sectionCurrentEvidence(
     section,
@@ -2381,8 +2400,6 @@ function sectionAssessment(
   sourceDiscovery: OfficialSourceDiscovery,
 ): SectionAssessment {
   const missing = new Set<string>();
-  const depthEvidence = depthEvidenceForSection(section, variant, req, sourceDiscovery);
-  const depth = sectionDepthStatus(depthEvidence, requiredDepthM, safetyMarginM);
   const passageTime = candidatePassageTime(section, routeDepartureIso, candidateDepartureIso);
   const stationMatches = matchOfficialStations(
     section,
@@ -2390,6 +2407,16 @@ function sectionAssessment(
     sourceDiscovery.rwsCatalogCoverage,
     sourceDiscovery.kiwisStationCoverage,
   );
+  const depthEvidence = depthEvidenceForSection(
+    section,
+    variant,
+    req,
+    sourceDiscovery,
+    tideEstimate,
+    stationMatches,
+    passageTime,
+  );
+  const depth = sectionDepthStatus(depthEvidence, requiredDepthM, safetyMarginM);
   const currentEvidence = sectionCurrentEvidence(
     section,
     stationMatches,
@@ -2622,6 +2649,9 @@ function depthEvidenceForSection(
   variant: RouteVariant,
   req: TideDepartureRequest,
   sourceDiscovery: OfficialSourceDiscovery,
+  tideEstimate?: TideCurrentEstimate,
+  stationMatches: StationMatch[] = [],
+  passageTime?: string,
 ): DepthEvidence | undefined {
   const candidates: Array<{ evidence: DepthEvidence; availableDepthM: number }> = [];
   const requestDatumEvidence = requestDatumAdjustedDepthEvidence(req);
@@ -2630,6 +2660,19 @@ function depthEvidenceForSection(
     candidates.push({
       evidence: requestDatumEvidence,
       availableDepthM: requestDatumAvailableDepthM,
+    });
+  }
+  const waterinfoDatumEvidence = waterinfoTideDatumAdjustedDepthEvidence(
+    req,
+    tideEstimate,
+    stationMatches,
+    passageTime,
+  );
+  const waterinfoDatumAvailableDepthM = requestDatumAvailableDepth(waterinfoDatumEvidence);
+  if (waterinfoDatumEvidence && waterinfoDatumAvailableDepthM !== undefined) {
+    candidates.push({
+      evidence: waterinfoDatumEvidence,
+      availableDepthM: waterinfoDatumAvailableDepthM,
     });
   }
   const eurisDepth = sourceDiscovery.eurisDepthBySectionKey.get(sectionKey(section));
@@ -2652,7 +2695,9 @@ function depthEvidenceForSection(
     });
   }
   return (
-    candidates.sort((a, b) => a.availableDepthM - b.availableDepthM)[0]?.evidence ?? requestDatumEvidence
+    candidates.sort((a, b) => a.availableDepthM - b.availableDepthM)[0]?.evidence ??
+    waterinfoDatumEvidence ??
+    requestDatumEvidence
   );
 }
 
@@ -3077,9 +3122,20 @@ function depthAssessment(
   safetyMarginM: number,
   sourceDiscovery: OfficialSourceDiscovery = emptySourceDiscovery(),
   datagaten: Datagat[] = [],
+  tideEstimate?: TideCurrentEstimate,
+  routeTextValue = "",
+  routeDepartureIso?: string,
 ): TideDeparturePlan["depth_assessment"] {
   const evaluation = evaluateDepth(
-    routeDepthEvidence(req, variant, sourceDiscovery, datagaten),
+    routeDepthEvidence(
+      req,
+      variant,
+      sourceDiscovery,
+      datagaten,
+      tideEstimate,
+      routeTextValue,
+      routeDepartureIso,
+    ),
     requiredDepthM,
     safetyMarginM,
   );
@@ -3110,8 +3166,12 @@ function routeDepthEvidence(
   variant: RouteVariant | undefined,
   sourceDiscovery: OfficialSourceDiscovery,
   datagaten: Datagat[] = [],
+  tideEstimate?: TideCurrentEstimate,
+  routeTextValue = "",
+  routeDepartureIso?: string,
 ): DepthEvidence | undefined {
   const candidates: Array<{ evidence: DepthEvidence; availableDepthM: number }> = [];
+  let fallbackWaterinfoDatumEvidence: DepthEvidence | undefined;
   const requestDatumEvidence = requestDatumAdjustedDepthEvidence(req);
   const requestDatumAvailableDepthM = requestDatumAvailableDepth(requestDatumEvidence);
   if (requestDatumEvidence && requestDatumAvailableDepthM !== undefined) {
@@ -3150,8 +3210,41 @@ function routeDepthEvidence(
       availableDepthM: item.depth_m,
     });
   }
+  const timelineStartIso = variant ? (firstSectionDeparture(variant) ?? routeDepartureIso) : undefined;
+  const candidateDepartureIso =
+    req.preferred_departure ??
+    tideEstimate?.windows.find((window) => window.start)?.start ??
+    timelineStartIso;
+  for (const section of variant?.secties ?? []) {
+    const passageTime = candidatePassageTime(section, timelineStartIso, candidateDepartureIso);
+    const stationMatches =
+      routeTextValue && tideEstimate
+        ? matchOfficialStations(
+            section,
+            routeTextValue,
+            sourceDiscovery.rwsCatalogCoverage,
+            sourceDiscovery.kiwisStationCoverage,
+          )
+        : [];
+    const waterinfoDatumEvidence = waterinfoTideDatumAdjustedDepthEvidence(
+      req,
+      tideEstimate,
+      stationMatches,
+      passageTime,
+    );
+    fallbackWaterinfoDatumEvidence ??= waterinfoDatumEvidence;
+    const waterinfoDatumAvailableDepthM = requestDatumAvailableDepth(waterinfoDatumEvidence);
+    if (waterinfoDatumEvidence && waterinfoDatumAvailableDepthM !== undefined) {
+      candidates.push({
+        evidence: waterinfoDatumEvidence,
+        availableDepthM: waterinfoDatumAvailableDepthM,
+      });
+    }
+  }
   return (
-    candidates.sort((a, b) => a.availableDepthM - b.availableDepthM)[0]?.evidence ?? requestDatumEvidence
+    candidates.sort((a, b) => a.availableDepthM - b.availableDepthM)[0]?.evidence ??
+    fallbackWaterinfoDatumEvidence ??
+    requestDatumEvidence
   );
 }
 
@@ -3164,6 +3257,89 @@ function requestDatumAdjustedDepthEvidence(req: TideDepartureRequest): DepthEvid
     cleanReferenceLevel(req.base_reference_level),
     cleanReferenceLevel(req.water_reference_level),
   );
+}
+
+function waterinfoTideDatumAdjustedDepthEvidence(
+  req: TideDepartureRequest,
+  tideEstimate: TideCurrentEstimate | undefined,
+  stationMatches: StationMatch[],
+  passageTime: string | undefined,
+): DepthEvidence | undefined {
+  const baseDepthM = finiteNumber(req.base_depth_m);
+  const baseReferenceLevel = cleanReferenceLevel(req.base_reference_level);
+  if (baseDepthM === undefined || !baseReferenceLevel || !tideEstimate || !passageTime) return undefined;
+
+  const station = matchedWaterinfoTideStation(tideEstimate, stationMatches);
+  if (!station) return undefined;
+  const point = nearestWaterinfoTidePoint(
+    station.series.points,
+    passageTime,
+    WATERINFO_TIDE_HEIGHT_WINDOW_MINUTES,
+  );
+  if (!point) {
+    return datumAdjustedDepthEvidence(
+      baseDepthM,
+      undefined,
+      `${req.depth_basis_label?.trim() || "opgegeven basisdiepte"} plus Waterinfo astronomische-getij ${station.station.label}`,
+      baseReferenceLevel,
+      station.series.reference_plane,
+    );
+  }
+
+  const waterLevelM = round2(point.value / 100);
+  return datumAdjustedDepthEvidence(
+    baseDepthM,
+    waterLevelM,
+    `${req.depth_basis_label?.trim() || "opgegeven basisdiepte"} plus Waterinfo astronomische-getij ${station.station.label} (${waterLevelM} m op ${point.dateTime})`,
+    baseReferenceLevel,
+    station.series.reference_plane,
+  );
+}
+
+function matchedWaterinfoTideStation(
+  tideEstimate: TideCurrentEstimate,
+  stationMatches: StationMatch[],
+): TideStationEstimate | undefined {
+  const byCode = new Map(tideEstimate.stations.map((station) => [station.station.code, station]));
+  for (const match of stationMatches) {
+    if (
+      match.source !== "rws-waterinfo-astronomical-tide" ||
+      !match.capabilities.includes("water_height_forecast") ||
+      !isSectionSpecificWaterinfoMatch(match)
+    ) {
+      continue;
+    }
+    const station = byCode.get(match.code);
+    if (station) return station;
+  }
+  return undefined;
+}
+
+function isSectionSpecificWaterinfoMatch(match: StationMatch): boolean {
+  return (
+    match.matched_on.some(
+      (item) => item.startsWith("waterway:") || item.startsWith("keyword:") || item === "geometry",
+    ) ||
+    (match.distance_km !== undefined && match.distance_km <= 25)
+  );
+}
+
+function nearestWaterinfoTidePoint(
+  points: WaterinfoTideSeries["points"],
+  passageIso: string,
+  maxDeltaMinutes: number,
+): WaterinfoTideSeries["points"][number] | undefined {
+  const passageMs = Date.parse(passageIso);
+  if (!Number.isFinite(passageMs)) return undefined;
+  let best: { point: WaterinfoTideSeries["points"][number]; deltaMs: number } | undefined;
+  for (const point of points) {
+    const pointMs = Date.parse(point.dateTime);
+    if (!Number.isFinite(pointMs)) continue;
+    const deltaMs = Math.abs(pointMs - passageMs);
+    if (deltaMs > maxDeltaMinutes * 60_000) continue;
+    if (!best || deltaMs < best.deltaMs) best = { point, deltaMs };
+  }
+  return best?.point;
 }
 
 function requestDatumDepthBasis(
