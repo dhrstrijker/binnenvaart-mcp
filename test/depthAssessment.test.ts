@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  datumAdjustedDepthEvidence,
   evaluateDepth,
   leastSoundedDepthEvidence,
   routeAllowedDraughtEvidence,
@@ -76,14 +77,7 @@ describe("depth assessment", () => {
 
     expect(
       evaluateDepth(
-        {
-          kind: "datum_adjusted_depth",
-          baseDepthM: 4.2,
-          waterLevelM: 0.9,
-          baseReferenceLevel: "NAP",
-          waterReferenceLevel: "NAP",
-          source: "maintained depth plus forecast water height",
-        },
+        datumAdjustedDepthEvidence(4.2, 0.9, "maintained depth plus forecast water height", "NAP", "NAP"),
         4.8,
         0.3,
       ),

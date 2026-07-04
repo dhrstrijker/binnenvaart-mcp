@@ -82,6 +82,31 @@ export function registerTools(server: McpServer): void {
           .string()
           .optional()
           .describe("Korte samenvatting van de vraag, vooral bij algemene ontbrekende-stroomdata-vragen."),
+        base_depth_m: z
+          .number()
+          .nonnegative()
+          .optional()
+          .describe(
+            "Expliciete basisdiepte/kaartdiepte in meter, alleen invullen als de gebruiker die als numerieke dieptebasis noemt.",
+          ),
+        base_reference_level: z
+          .string()
+          .optional()
+          .describe("Referentievlak van base_depth_m, bijvoorbeeld NAP of TAW."),
+        water_level_m: z
+          .number()
+          .optional()
+          .describe(
+            "Waterhoogte/waterstand in meter t.o.v. water_reference_level, alleen invullen als de gebruiker die expliciet noemt.",
+          ),
+        water_reference_level: z
+          .string()
+          .optional()
+          .describe("Referentievlak van water_level_m, bijvoorbeeld NAP of TAW."),
+        depth_basis_label: z
+          .string()
+          .optional()
+          .describe("Korte bron/label voor de opgegeven basisdiepte plus waterhoogte."),
       },
     },
     async (input) => guarded("tide-departure-window-unexpected", () => getTideDepartureWindow(input)),

@@ -18,6 +18,7 @@ import {
 import { candidatePassageTime, type RouteSection } from "./routeSections.js";
 import {
   evaluateDepth,
+  datumAdjustedDepthEvidence,
   leastSoundedDepthEvidence,
   routeAllowedDraughtEvidence,
   sectionAllowedDraughtEvidence,
@@ -95,6 +96,11 @@ export interface TideDepartureRequest {
   preferred_departure?: string;
   preference?: string;
   context?: string;
+  base_depth_m?: number;
+  base_reference_level?: string;
+  water_level_m?: number;
+  water_reference_level?: string;
+  depth_basis_label?: string;
 }
 
 export interface TideDeparturePlan {
@@ -117,6 +123,13 @@ export interface TideDeparturePlan {
     arrival_by?: string;
     preferred_departure?: string;
     preference?: string;
+    datum_depth_basis?: {
+      base_depth_m?: number;
+      base_reference_level?: string;
+      water_level_m?: number;
+      water_reference_level?: string;
+      label?: string;
+    };
   };
   candidate_windows: DepartureWindow[];
   current_assessment: {
@@ -604,7 +617,7 @@ export async function getTideDepartureWindow(
       message: "Geen diepgang opgegeven; zonder diepgang kan de onder-kielmarge niet worden beoordeeld.",
       severity: "blocking",
     });
-  } else if (!hasDepthBasis(variant, sourceDiscovery, datagaten)) {
+  } else if (!hasDepthBasis(req, variant, sourceDiscovery, datagaten)) {
     datagaten.push({
       code: "tide-departure-depth-basis-missing",
       message:
@@ -1731,7 +1744,7 @@ function basePlan(
   sourceDiscovery: OfficialSourceDiscovery = emptySourceDiscovery(),
 ): TideDeparturePlan {
   const variant = voyage?.varianten[0];
-  const depth = depthAssessment(variant, requiredDepthM, safetyMarginM, sourceDiscovery, datagaten);
+  const depth = depthAssessment(req, variant, requiredDepthM, safetyMarginM, sourceDiscovery, datagaten);
   const routeTextValue =
     origin && destination
       ? routeText(req, origin, destination)
@@ -1741,6 +1754,7 @@ function basePlan(
             .join(" "),
         );
   const sectionAssessments = buildSectionAssessments(
+    req,
     variant,
     voyage?.vertrek,
     req.preferred_departure,
@@ -1806,6 +1820,11 @@ function basePlan(
       arrival_by: req.arrival_by,
       preferred_departure: req.preferred_departure,
       preference: req.preference,
+      ...(requestDatumDepthBasis(req)
+        ? {
+            datum_depth_basis: requestDatumDepthBasis(req),
+          }
+        : {}),
     },
     candidate_windows: candidateWindows,
     current_assessment: {
@@ -1892,6 +1911,7 @@ function buildCandidateDepartureWindows(
       tideEstimate.windows.map((window) =>
         enrichCandidateWindow(
           window,
+          req,
           variant,
           timelineStartIso,
           arrivalByIso,
@@ -1922,6 +1942,7 @@ function buildCandidateDepartureWindows(
 
 function enrichCandidateWindow(
   window: DepartureWindow,
+  req: TideDepartureRequest,
   variant: RouteVariant | undefined,
   timelineStartIso: string | undefined,
   arrivalByIso: string | undefined,
@@ -1937,6 +1958,7 @@ function enrichCandidateWindow(
     windowSectionAssessment(
       section,
       variant,
+      req,
       timelineStartIso,
       candidateDepartureIso,
       requiredDepthM,
@@ -1956,6 +1978,7 @@ function enrichCandidateWindow(
 function windowSectionAssessment(
   section: RouteSection,
   variant: RouteVariant,
+  req: TideDepartureRequest,
   timelineStartIso: string | undefined,
   candidateDepartureIso: string,
   requiredDepthM: number | undefined,
@@ -1965,7 +1988,7 @@ function windowSectionAssessment(
   sourceDiscovery: OfficialSourceDiscovery,
 ): WindowSectionAssessment {
   const depth = sectionDepthStatus(
-    depthEvidenceForSection(section, variant, sourceDiscovery),
+    depthEvidenceForSection(section, variant, req, sourceDiscovery),
     requiredDepthM,
     safetyMarginM,
   );
@@ -2315,6 +2338,7 @@ function windowDecisionBasis(input: {
 }
 
 function buildSectionAssessments(
+  req: TideDepartureRequest,
   variant: RouteVariant | undefined,
   routeDepartureIso: string | undefined,
   preferredDepartureIso: string | undefined,
@@ -2332,6 +2356,7 @@ function buildSectionAssessments(
     sectionAssessment(
       section,
       variant,
+      req,
       timelineStartIso,
       candidateDepartureIso,
       requiredDepthM,
@@ -2346,6 +2371,7 @@ function buildSectionAssessments(
 function sectionAssessment(
   section: RouteSection,
   variant: RouteVariant,
+  req: TideDepartureRequest,
   routeDepartureIso: string | undefined,
   candidateDepartureIso: string | undefined,
   requiredDepthM: number | undefined,
@@ -2355,7 +2381,7 @@ function sectionAssessment(
   sourceDiscovery: OfficialSourceDiscovery,
 ): SectionAssessment {
   const missing = new Set<string>();
-  const depthEvidence = depthEvidenceForSection(section, variant, sourceDiscovery);
+  const depthEvidence = depthEvidenceForSection(section, variant, req, sourceDiscovery);
   const depth = sectionDepthStatus(depthEvidence, requiredDepthM, safetyMarginM);
   const passageTime = candidatePassageTime(section, routeDepartureIso, candidateDepartureIso);
   const stationMatches = matchOfficialStations(
@@ -2594,27 +2620,50 @@ function sectionDepthStatus(
 function depthEvidenceForSection(
   section: RouteSection,
   variant: RouteVariant,
+  req: TideDepartureRequest,
   sourceDiscovery: OfficialSourceDiscovery,
 ): DepthEvidence | undefined {
+  const candidates: Array<{ evidence: DepthEvidence; availableDepthM: number }> = [];
+  const requestDatumEvidence = requestDatumAdjustedDepthEvidence(req);
+  const requestDatumAvailableDepthM = requestDatumAvailableDepth(requestDatumEvidence);
+  if (requestDatumEvidence && requestDatumAvailableDepthM !== undefined) {
+    candidates.push({
+      evidence: requestDatumEvidence,
+      availableDepthM: requestDatumAvailableDepthM,
+    });
+  }
   const eurisDepth = sourceDiscovery.eurisDepthBySectionKey.get(sectionKey(section));
   if (eurisDepth) {
-    return leastSoundedDepthEvidence(eurisDepth.depth_m, eurisDepth.source, eurisDepth.reference_level);
+    candidates.push({
+      evidence: leastSoundedDepthEvidence(eurisDepth.depth_m, eurisDepth.source, eurisDepth.reference_level),
+      availableDepthM: eurisDepth.depth_m,
+    });
   }
   if (section.dimensions?.diepgangCm !== undefined) {
-    return sectionAllowedDraughtEvidence(section.dimensions.diepgangCm);
+    candidates.push({
+      evidence: sectionAllowedDraughtEvidence(section.dimensions.diepgangCm),
+      availableDepthM: section.dimensions.diepgangCm / 100,
+    });
   }
   if (variant.maxAfmetingen?.diepgangCm !== undefined) {
-    return routeAllowedDraughtEvidence(variant.maxAfmetingen.diepgangCm);
+    candidates.push({
+      evidence: routeAllowedDraughtEvidence(variant.maxAfmetingen.diepgangCm),
+      availableDepthM: variant.maxAfmetingen.diepgangCm / 100,
+    });
   }
-  return undefined;
+  return (
+    candidates.sort((a, b) => a.availableDepthM - b.availableDepthM)[0]?.evidence ?? requestDatumEvidence
+  );
 }
 
 function hasDepthBasis(
+  req: TideDepartureRequest,
   variant: RouteVariant | undefined,
   sourceDiscovery: OfficialSourceDiscovery,
   datagaten: Datagat[] = [],
 ): boolean {
   return Boolean(
+    requestDatumAdjustedDepthEvidence(req) ||
     variant?.maxAfmetingen?.diepgangCm !== undefined ||
     variant?.secties.some((section) => section.dimensions?.diepgangCm !== undefined) ||
     sourceDiscovery.eurisDepthBySectionKey.size > 0 ||
@@ -3022,6 +3071,7 @@ function anchorText(anchor: PlanningAnchor): string {
 }
 
 function depthAssessment(
+  req: TideDepartureRequest,
   variant: RouteVariant | undefined,
   requiredDepthM: number | undefined,
   safetyMarginM: number,
@@ -3029,7 +3079,7 @@ function depthAssessment(
   datagaten: Datagat[] = [],
 ): TideDeparturePlan["depth_assessment"] {
   const evaluation = evaluateDepth(
-    routeDepthEvidence(variant, sourceDiscovery, datagaten),
+    routeDepthEvidence(req, variant, sourceDiscovery, datagaten),
     requiredDepthM,
     safetyMarginM,
   );
@@ -3056,11 +3106,20 @@ function isAllowedDraughtEvidence(kind: DepthEvidenceKind | undefined): boolean 
 }
 
 function routeDepthEvidence(
+  req: TideDepartureRequest,
   variant: RouteVariant | undefined,
   sourceDiscovery: OfficialSourceDiscovery,
   datagaten: Datagat[] = [],
 ): DepthEvidence | undefined {
   const candidates: Array<{ evidence: DepthEvidence; availableDepthM: number }> = [];
+  const requestDatumEvidence = requestDatumAdjustedDepthEvidence(req);
+  const requestDatumAvailableDepthM = requestDatumAvailableDepth(requestDatumEvidence);
+  if (requestDatumEvidence && requestDatumAvailableDepthM !== undefined) {
+    candidates.push({
+      evidence: requestDatumEvidence,
+      availableDepthM: requestDatumAvailableDepthM,
+    });
+  }
   const routeDimensionLimitCm = routeDimensionLimitFromDatagaten(datagaten);
   if (routeDimensionLimitCm !== undefined) {
     candidates.push({
@@ -3091,7 +3150,64 @@ function routeDepthEvidence(
       availableDepthM: item.depth_m,
     });
   }
-  return candidates.sort((a, b) => a.availableDepthM - b.availableDepthM)[0]?.evidence;
+  return (
+    candidates.sort((a, b) => a.availableDepthM - b.availableDepthM)[0]?.evidence ?? requestDatumEvidence
+  );
+}
+
+function requestDatumAdjustedDepthEvidence(req: TideDepartureRequest): DepthEvidence | undefined {
+  if (!requestDatumDepthBasis(req)) return undefined;
+  return datumAdjustedDepthEvidence(
+    finiteNumber(req.base_depth_m),
+    finiteNumber(req.water_level_m),
+    req.depth_basis_label?.trim() || "Gebruiker opgegeven basisdiepte plus waterhoogte",
+    cleanReferenceLevel(req.base_reference_level),
+    cleanReferenceLevel(req.water_reference_level),
+  );
+}
+
+function requestDatumDepthBasis(
+  req: TideDepartureRequest,
+): TideDeparturePlan["route_assumptions"]["datum_depth_basis"] | undefined {
+  if (
+    req.base_depth_m === undefined &&
+    req.water_level_m === undefined &&
+    !req.base_reference_level &&
+    !req.water_reference_level &&
+    !req.depth_basis_label
+  ) {
+    return undefined;
+  }
+  return {
+    ...(finiteNumber(req.base_depth_m) !== undefined ? { base_depth_m: finiteNumber(req.base_depth_m) } : {}),
+    ...(cleanReferenceLevel(req.base_reference_level)
+      ? { base_reference_level: cleanReferenceLevel(req.base_reference_level) }
+      : {}),
+    ...(finiteNumber(req.water_level_m) !== undefined
+      ? { water_level_m: finiteNumber(req.water_level_m) }
+      : {}),
+    ...(cleanReferenceLevel(req.water_reference_level)
+      ? { water_reference_level: cleanReferenceLevel(req.water_reference_level) }
+      : {}),
+    ...(req.depth_basis_label?.trim() ? { label: req.depth_basis_label.trim() } : {}),
+  };
+}
+
+function requestDatumAvailableDepth(evidence: DepthEvidence | undefined): number | undefined {
+  if (!evidence || evidence.kind !== "datum_adjusted_depth") return undefined;
+  if (evidence.baseDepthM === undefined || evidence.waterLevelM === undefined) return undefined;
+  if (!evidence.baseReferenceLevel || !evidence.waterReferenceLevel) return undefined;
+  if (normalize(evidence.baseReferenceLevel) !== normalize(evidence.waterReferenceLevel)) return undefined;
+  return round2(evidence.baseDepthM + evidence.waterLevelM);
+}
+
+function finiteNumber(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function cleanReferenceLevel(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
 }
 
 function routeDimensionLimitFromDatagaten(datagaten: Datagat[]): number | undefined {

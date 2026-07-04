@@ -1124,6 +1124,116 @@ describe("getTideDepartureWindow", () => {
     );
   });
 
+  it("uses datum-adjusted base depth and water height only when reference levels match", async () => {
+    mockFetch((url) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Rotterdam")) {
+        return {
+          items: [
+            {
+              isrs: "NL666666666666666666",
+              nationalObjectName: "Rotterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Nieuwe Maas",
+              locationName: "Rotterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Amsterdam")) {
+        return {
+          items: [
+            {
+              isrs: AMSTERDAM_AREA,
+              nationalObjectName: "Amsterdam",
+              functionMessage: "Port Area",
+              fairwayName: "Noordzeekanaal",
+              locationName: "Amsterdam",
+              countryCode: "NL",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        return voyageOk({
+          AllowedDimensions: { Height: 900 },
+          Legs: [
+            {
+              FromObjectName: "Rotterdam",
+              ToObjectName: "Amsterdam",
+              Segments: [
+                {
+                  SegmentName: "Nieuwe Maas - Lek",
+                  WaterwayName: "Nieuwe Maas",
+                  FairwaySectionId: "FS-ROT-LEK",
+                  Authority: "Rijkswaterstaat",
+                  Direction: "UPSTREAM",
+                  ETA: "2026-07-03T08:30:00Z",
+                  ETD: "2026-07-03T08:00:00Z",
+                  Length: 12500,
+                  CountryCodes: ["NL"],
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (url.includes("/api/v3/timeseries") && decoded.includes("definedParameterCode eq 'LSD'")) {
+        return { items: [] };
+      }
+      if (url.includes("OphalenCatalogus")) {
+        return {};
+      }
+      if (url.includes("/api/chart/get")) {
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T10:00:00Z", -70],
+          ["2026-07-03T14:00:00Z", 100],
+          ["2026-07-03T18:00:00Z", -60],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Rotterdam",
+      destination: "Amsterdam",
+      draft_m: 4.5,
+      safety_margin_m: 0.3,
+      base_depth_m: 4.2,
+      base_reference_level: "NAP",
+      water_level_m: 0.9,
+      water_reference_level: "NAP",
+      depth_basis_label: "maintained depth plus forecast water height",
+      preference: "stroom mee",
+    });
+
+    expect(result.datagaten.map((d) => d.code)).not.toContain("tide-departure-depth-basis-missing");
+    expect(result.data?.route_assumptions.datum_depth_basis).toMatchObject({
+      base_depth_m: 4.2,
+      base_reference_level: "NAP",
+      water_level_m: 0.9,
+      water_reference_level: "NAP",
+      label: "maintained depth plus forecast water height",
+    });
+    expect(result.data?.depth_assessment).toMatchObject({
+      status: "ok",
+      evidence_kind: "datum_adjusted_depth",
+      available_depth_m: 5.1,
+      required_depth_m: 4.8,
+      basis: expect.stringContaining("maintained depth plus forecast water height t.o.v. NAP"),
+    });
+    expect(result.data?.route_sections[0]).toMatchObject({
+      depth_status: "ok",
+      depth_evidence_kind: "datum_adjusted_depth",
+      available_depth_m: 5.1,
+      depth_basis: expect.stringContaining("maintained depth plus forecast water height t.o.v. NAP"),
+    });
+  });
+
   it("tries specific segment names for EuRIS Hydrometeo LSD when the broad waterway query has no candidates", async () => {
     const lsdQueries: string[] = [];
     mockFetch((url) => {

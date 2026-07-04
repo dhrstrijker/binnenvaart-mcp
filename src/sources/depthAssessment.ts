@@ -153,6 +153,23 @@ export function leastSoundedDepthEvidence(
   };
 }
 
+export function datumAdjustedDepthEvidence(
+  baseDepthM: number | undefined,
+  waterLevelM: number | undefined,
+  source: string,
+  baseReferenceLevel: string | undefined,
+  waterReferenceLevel: string | undefined,
+): DepthEvidence {
+  return {
+    kind: "datum_adjusted_depth",
+    baseDepthM,
+    waterLevelM,
+    source,
+    baseReferenceLevel,
+    waterReferenceLevel,
+  };
+}
+
 function missingDepthBasis(requiredDepthM: number, safetyMarginM: number): DepthEvaluation {
   return {
     status: "missing",
