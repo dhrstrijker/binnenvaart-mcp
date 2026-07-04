@@ -133,7 +133,8 @@ export const SOURCE_REGISTRY: SourceRegistryEntry[] = [
     },
     notes: [
       "H series are mapped as water-level forecast/measurement/threshold context.",
-      "Q/debiet and explicit current-speed/current-direction parameter families are catalog discovery only until value semantics and route bearing are wired.",
+      "Q/debiet is hydrological context only. Public KiWIS V/velocity series without a paired current-direction series are not enough to classify stroom mee/tegen.",
+      "Explicit current-speed/current-direction series may become official current evidence only when both values are fetched near the section passagetime, the speed unit is recognized, and direction is compared with route bearing.",
       "Telemetry or quality parameters such as Vdc, ODO, EC, pH or temperature must never be treated as current.",
       "Do not substitute Dutch RWS data for Flemish route sections.",
     ],
@@ -300,7 +301,7 @@ export const PARAMETER_CONTRACTS: ParameterContract[] = [
       status: "discovered",
     },
     interpretation_note:
-      "Only explicit current-speed parameter families may support current evidence; values must carry a recognized speed unit before conversion to m/s. Vdc or water-quality/telemetry series are not current.",
+      "Only explicit current-speed parameter families may support current evidence; values must carry a recognized speed unit before conversion to m/s and must be paired with current direction. Public V/velocity without direction remains a blocker for mee/tegen.",
   },
   {
     id: "waterinfo-vlaanderen-current-direction",

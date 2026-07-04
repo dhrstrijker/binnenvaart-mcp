@@ -2436,6 +2436,9 @@ function sectionAssessment(
   } else {
     missing.add("tide-departure-section-current-source-missing");
   }
+  for (const code of kiwisCurrentComponentMissingCodes(stationMatches, currentEvidence)) {
+    missing.add(code);
+  }
   if (section.routeBearingDeg === undefined) missing.add("tide-departure-section-bearing-missing");
   if (requiredDepthM === undefined) missing.add("tide-departure-section-draft-missing");
   if (depth.status === "missing") missing.add("tide-departure-section-depth-basis-missing");
@@ -2624,12 +2627,45 @@ function kiwisCurrentMissingReason(match: StationMatch): string {
   const hasDirection = match.capabilities.includes("current_direction");
   const hasDischarge = match.capabilities.includes("discharge");
   if (hasSpeed && hasDirection) {
-    return `Deze Belgische sectie matcht op ${match.label}; Waterinfo Vlaanderen/KiWIS-catalogus toont stroomsemantiek, maar waarde-ophaal, versheid en routebearing-koppeling zijn nog niet aangesloten. Gebruik geen Nederlandse peilplaats als vervanging voor dit Belgische trajectdeel.`;
+    return `Deze Belgische sectie matcht op ${match.label}; Waterinfo Vlaanderen/KiWIS-catalogus toont expliciete stroomsnelheid én stroomrichting, maar er is geen bruikbare gekoppelde waarde rond de passagetijd gevonden of de snelheidseenheid is niet herkend. Gebruik geen Nederlandse peilplaats als vervanging voor dit Belgische trajectdeel.`;
+  }
+  if (hasSpeed) {
+    return `Deze Belgische sectie matcht op ${match.label}; Waterinfo Vlaanderen/KiWIS-catalogus toont wel een V-/stroomsnelheidsreeks, maar geen gekoppelde stroomrichting. Daarmee kan mee/tegen niet officieel worden bepaald. Gebruik geen Nederlandse peilplaats als vervanging voor dit Belgische trajectdeel.`;
+  }
+  if (hasDirection) {
+    return `Deze Belgische sectie matcht op ${match.label}; Waterinfo Vlaanderen/KiWIS-catalogus toont wel stroomrichting, maar geen gekoppelde stroomsnelheid. Daarmee kan mee/tegen niet officieel worden bepaald. Gebruik geen Nederlandse peilplaats als vervanging voor dit Belgische trajectdeel.`;
   }
   if (hasDischarge) {
     return `Deze Belgische sectie matcht op ${match.label}; Waterinfo Vlaanderen/KiWIS-catalogus toont debietdekking, maar debiet is geen stroomrichting of stroomsnelheid voor mee/tegen. Gebruik geen Nederlandse peilplaats als vervanging voor dit Belgische trajectdeel.`;
   }
   return `Deze Belgische sectie matcht op ${match.label}; Waterinfo Vlaanderen/KiWIS-catalogus toont geen expliciete stroomrichting/stroomsnelheid voor deze sectie. Gebruik geen Nederlandse peilplaats als vervanging voor dit Belgische trajectdeel.`;
+}
+
+function kiwisCurrentComponentMissingCodes(
+  stationMatches: StationMatch[],
+  currentEvidence: NonNullable<SectionAssessment["current_evidence"]>,
+): string[] {
+  if (currentEvidence.tier === "official_current") return [];
+  const kiwisMatches = stationMatches.filter(
+    (match) => match.source === "waterinfo-vlaanderen-kiwis" && match.country_code === "BE",
+  );
+  if (!kiwisMatches.length) return [];
+
+  const hasPairedStation = kiwisMatches.some(
+    (match) =>
+      match.capabilities.includes("current_speed") && match.capabilities.includes("current_direction"),
+  );
+  if (hasPairedStation) return ["waterinfo-vlaanderen-kiwis-current-values-unusable"];
+
+  const hasSpeed = kiwisMatches.some((match) => match.capabilities.includes("current_speed"));
+  const hasDirection = kiwisMatches.some((match) => match.capabilities.includes("current_direction"));
+  if (hasSpeed && !hasDirection) return ["waterinfo-vlaanderen-kiwis-current-direction-missing"];
+  if (hasDirection && !hasSpeed) return ["waterinfo-vlaanderen-kiwis-current-speed-missing"];
+  if (hasSpeed && hasDirection) return ["waterinfo-vlaanderen-kiwis-current-pair-missing"];
+  if (kiwisMatches.some((match) => match.capabilities.includes("discharge"))) {
+    return ["waterinfo-vlaanderen-kiwis-discharge-not-current"];
+  }
+  return ["waterinfo-vlaanderen-kiwis-current-series-missing"];
 }
 
 function sectionKey(section: RouteSection): string {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTideDepartureWindow } from "../src/sources/tide.js";
 import { mockFetch } from "./helpers.js";
 
@@ -70,6 +70,15 @@ function astroChart(points: Array<[string, number]>, t0: string | null = "2026-0
 }
 
 describe("getTideDepartureWindow", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-03T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("uses a broad port-area planning anchor instead of forcing terminal selection", async () => {
     let routeBody: Record<string, unknown> | undefined;
     mockFetch((url, init) => {
@@ -2363,6 +2372,158 @@ describe("getTideDepartureWindow", () => {
       ]),
     );
     expect(result.data?.route_sections[0]?.current_evidence?.basis).toContain("Waterinfo Vlaanderen/KiWIS");
+  });
+
+  it("does not treat Flemish KiWIS velocity without direction as current-with-route evidence", async () => {
+    mockFetch((url) => {
+      const decoded = decodeURIComponent(url);
+      if (url.includes("RisIndices") && decoded.includes("Antwerpen")) {
+        return {
+          items: [
+            {
+              isrs: ANTWERP_AREA,
+              nationalObjectName: "Antwerpen",
+              functionMessage: "Port Area",
+              fairwayName: "Schelde",
+              locationName: "Antwerpen",
+              countryCode: "BE",
+            },
+          ],
+        };
+      }
+      if (url.includes("RisIndices") && decoded.includes("Gent")) {
+        return {
+          items: [
+            {
+              isrs: "BE888888888888888888",
+              nationalObjectName: "Gent",
+              functionMessage: "Port Area",
+              fairwayName: "Schelde",
+              locationName: "Gent",
+              countryCode: "BE",
+            },
+          ],
+        };
+      }
+      if (url.includes("RouteCalculatorV2")) {
+        return voyageOk({
+          AllowedDimensions: { Draught: 430 },
+          Legs: [
+            {
+              FromObjectName: "Antwerpen",
+              ToObjectName: "Gent",
+              Segments: [
+                {
+                  SegmentName: "Schelde Antwerpen",
+                  WaterwayName: "Schelde",
+                  FairwaySectionId: "BE-SCHELDE-1",
+                  Authority: "De Vlaamse Waterweg nv",
+                  Direction: "UPSTREAM",
+                  ETA: "2026-07-03T10:00:00Z",
+                  ETD: "2026-07-03T08:00:00Z",
+                  Length: 32000,
+                  Dimensions: { Draught: 430 },
+                  CountryCodes: ["BE"],
+                  Events: [
+                    { EventType: "Point", ObjectName: "Albertdok", Latitude: 51.291, Longitude: 4.313 },
+                    { EventType: "Point", ObjectName: "Schelde", Latitude: 51.27, Longitude: 4.25 },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+      }
+      if (url.includes("getStationList")) {
+        return [
+          ["station_name", "station_no", "station_id", "station_latitude", "station_longitude"],
+          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "51.2914621908115", "4.31336706809401"],
+        ];
+      }
+      if (url.includes("getTimeseriesList")) {
+        return [
+          [
+            "station_name",
+            "station_no",
+            "station_id",
+            "ts_id",
+            "ts_name",
+            "parametertype_id",
+            "parametertype_name",
+          ],
+          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "01315353042", "Pv.15", "01559", "H"],
+          ["Albertdok/Schelde", "01K04_MQ45", "0120379", "0199992042", "P.15", "01561", "v"],
+        ];
+      }
+      if (url.includes("getTimeseriesValues")) {
+        if (decoded.includes("ts_id=0199992042")) {
+          throw new Error("KiWIS velocity without direction must not be fetched as paired current evidence");
+        }
+        return [
+          {
+            ts_id: "01315353042",
+            rows: "2",
+            columns: "Timestamp,Value",
+            data: [
+              ["2026-07-03T09:30:00+02:00", "4.34"],
+              ["2026-07-03T10:00:00+02:00", "4.42"],
+            ],
+          },
+        ];
+      }
+      if (url.includes("/api/chart/get")) {
+        return astroChart([
+          ["2026-07-03T00:00:00Z", -40],
+          ["2026-07-03T02:00:00Z", -80],
+          ["2026-07-03T06:00:00Z", 110],
+          ["2026-07-03T10:00:00Z", -70],
+          ["2026-07-03T14:00:00Z", 100],
+          ["2026-07-03T18:00:00Z", -60],
+        ]);
+      }
+      return {};
+    });
+
+    const result = await getTideDepartureWindow({
+      origin: "Antwerpen",
+      destination: "Gent",
+      route_hint: "Schelde",
+      draft_m: 3.5,
+      preference: "stroom mee",
+    });
+
+    expect(result.data?.route_sections[0]?.station_matches[0]).toMatchObject({
+      code: "0120379",
+      label: "Albertdok/Schelde",
+      source: "waterinfo-vlaanderen-kiwis",
+      capabilities: expect.arrayContaining(["water_height_forecast", "current_speed"]),
+    });
+    expect(result.data?.route_sections[0]?.station_matches[0]?.capabilities).not.toContain(
+      "current_direction",
+    );
+    expect(result.data?.route_sections[0]).toMatchObject({
+      current_status: "unknown",
+      current_evidence: {
+        tier: "missing",
+        status: "unknown",
+        basis: expect.stringContaining(
+          "wel een V-/stroomsnelheidsreeks, maar geen gekoppelde stroomrichting",
+        ),
+      },
+    });
+    expect(result.data?.route_sections[0]?.missing_data_codes).toEqual(
+      expect.arrayContaining([
+        "tide-departure-section-current-source-missing",
+        "waterinfo-vlaanderen-kiwis-current-direction-missing",
+      ]),
+    );
+    expect(result.data?.route_sections[0]?.water_level_evidence).toMatchObject({
+      ts_id: "01315353042",
+      series_kind: "forecast",
+      series_selection: "forecast_preferred",
+      water_level_m: 4.42,
+      rejected_as_depth_basis: true,
+    });
   });
 
   it("uses KiWIS H-measurements as water-level fallback when no H-forecast is available", async () => {
