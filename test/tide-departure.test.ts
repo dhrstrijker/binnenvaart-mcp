@@ -2151,6 +2151,7 @@ describe("getTideDepartureWindow", () => {
     const result = await getTideDepartureWindow({
       origin: "Europoort",
       destination: "Amsterdam",
+      preferred_departure: "now",
       draft_m: 4.5,
       safety_margin_m: 0.3,
       preference: "stroom mee",
@@ -2165,6 +2166,8 @@ describe("getTideDepartureWindow", () => {
     });
     expect(result.data?.candidate_windows[0]).toMatchObject({
       status: "blocked",
+      start: "2026-07-03T12:00:00.000Z",
+      end: "2026-07-03T12:00:00.000Z",
       label: "Niet vertrekken",
     });
     expect(result.datagaten).toEqual(

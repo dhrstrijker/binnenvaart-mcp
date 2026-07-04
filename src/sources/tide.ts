@@ -504,6 +504,7 @@ interface EurisDepthSectionEvidence {
 export async function getTideDepartureWindow(
   req: TideDepartureRequest,
 ): Promise<SourceResult<TideDeparturePlan>> {
+  req = normalizeRelativeDepartureRequest(req);
   const safetyMarginM = positive(req.safety_margin_m) ?? DEFAULT_MARGIN_M;
   const draftM = plausibleDraft(req.draft_m);
   const requiredDepthM = draftM !== undefined ? round2(draftM + safetyMarginM) : undefined;
@@ -3784,6 +3785,19 @@ function requestDatumAvailableDepth(evidence: DepthEvidence | undefined): number
   if (!evidence.baseReferenceLevel || !evidence.waterReferenceLevel) return undefined;
   if (normalize(evidence.baseReferenceLevel) !== normalize(evidence.waterReferenceLevel)) return undefined;
   return round2(evidence.baseDepthM + evidence.waterLevelM);
+}
+
+function normalizeRelativeDepartureRequest(req: TideDepartureRequest): TideDepartureRequest {
+  const preferredDeparture = req.preferred_departure?.trim();
+  if (!preferredDeparture || !isNowToken(preferredDeparture)) return req;
+  return {
+    ...req,
+    preferred_departure: new Date().toISOString(),
+  };
+}
+
+function isNowToken(value: string): boolean {
+  return ["now", "right now", "nu", "direct", "meteen"].includes(normalize(value));
 }
 
 function finiteNumber(value: number | undefined): number | undefined {
